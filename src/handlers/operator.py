@@ -1,0 +1,315 @@
+"""
+操作人管理处理器
+"""
+from telegram import Update
+from telegram.ext import ContextTypes
+from sqlalchemy import select, and_
+
+from ..models import Group, GroupOperator, get_db
+from ..utils.formatter import Formatter
+
+
+async def is_operator(user_id: int, group_id: int, db) -> bool:
+    """检查用户是否为操作人"""
+    # 检查群组是否设置全员可操作
+    query = select(Group).where(Group.group_id == group_id)
+    result = await db.execute(query)
+    group = result.scalar_one_or_none()
+
+    if group and group.all_members_operator:
+        return True
+
+    # 检查是否为群组操作人或全局操作人
+    query = select(GroupOperator).where(
+        and_(
+            GroupOperator.group_id == group_id,
+            GroupOperator.user_id == user_id
+        )
+    )
+    result = await db.execute(query)
+    operator = result.scalar_one_or_none()
+
+    if operator:
+        return True
+
+    # 检查全局操作人
+    query = select(GroupOperator).where(
+        and_(
+            GroupOperator.user_id == user_id,
+            GroupOperator.is_global == True
+        )
+    )
+    result = await db.execute(query)
+    global_operator = result.scalar_one_or_none()
+
+    return global_operator is not None
+
+
+async def add_operator(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """添加操作人"""
+    if not update.message or not update.effective_chat:
+        return
+
+    chat_id = update.effective_chat.id
+
+    # 解析@提及的用户
+    mentioned_users = []
+
+    # 从消息实体中获取提及的用户
+    if update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == "mention":
+                username = update.message.text[entity.offset:entity.offset + entity.length]
+                mentioned_users.append(username.strip('@'))
+            elif entity.type == "text_mention" and entity.user:
+                mentioned_users.append({
+                    'user_id': entity.user.id,
+                    'username': entity.user.username,
+                    'first_name': entity.user.first_name
+                })
+
+    # 如果是回复消息，添加被回复的用户
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        replied_user = update.message.reply_to_message.from_user
+        mentioned_users.append({
+            'user_id': replied_user.id,
+            'username': replied_user.username,
+            'first_name': replied_user.first_name
+        })
+
+    if not mentioned_users:
+        await update.message.reply_text("❌ 请@用户或回复用户消息来添加操作人")
+        return
+
+    async for db in get_db():
+        added_count = 0
+
+        for user_info in mentioned_users:
+            if isinstance(user_info, str):
+                # 只有用户名，无法直接添加
+                continue
+
+            user_id = user_info['user_id']
+
+            # 检查是否已存在
+            query = select(GroupOperator).where(
+                and_(
+                    GroupOperator.group_id == chat_id,
+                    GroupOperator.user_id == user_id
+                )
+            )
+            result = await db.execute(query)
+            existing = result.scalar_one_or_none()
+
+            if not existing:
+                operator = GroupOperator(
+                    group_id=chat_id,
+                    user_id=user_id,
+                    username=user_info.get('username'),
+                    first_name=user_info.get('first_name'),
+                    is_global=False
+                )
+                db.add(operator)
+                added_count += 1
+
+        await db.commit()
+
+        if added_count > 0:
+            await update.message.reply_text(f"✅ 已添加 {added_count} 个操作人")
+        else:
+            await update.message.reply_text("ℹ️ 用户已经是操作人")
+
+
+async def remove_operator(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """删除操作人"""
+    if not update.message or not update.effective_chat:
+        return
+
+    chat_id = update.effective_chat.id
+
+    # 获取要删除的用户
+    target_users = []
+
+    # 如果是回复消息
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        target_users.append(update.message.reply_to_message.from_user.id)
+
+    # 解析@提及的用户
+    if update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == "text_mention" and entity.user:
+                target_users.append(entity.user.id)
+
+    if not target_users:
+        await update.message.reply_text("❌ 请@用户或回复用户消息来删除操作人")
+        return
+
+    async for db in get_db():
+        removed_count = 0
+
+        for user_id in target_users:
+            query = select(GroupOperator).where(
+                and_(
+                    GroupOperator.group_id == chat_id,
+                    GroupOperator.user_id == user_id
+                )
+            )
+            result = await db.execute(query)
+            operator = result.scalar_one_or_none()
+
+            if operator:
+                await db.delete(operator)
+                removed_count += 1
+
+        await db.commit()
+
+        if removed_count > 0:
+            await update.message.reply_text(f"✅ 已删除 {removed_count} 个操作人")
+        else:
+            await update.message.reply_text("ℹ️ 用户不是操作人")
+
+
+async def show_operators(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """显示操作人列表"""
+    if not update.message or not update.effective_chat:
+        return
+
+    chat_id = update.effective_chat.id
+
+    async for db in get_db():
+        # 获取群组操作人
+        query = select(GroupOperator).where(
+            and_(
+                GroupOperator.group_id == chat_id,
+                GroupOperator.is_global == False
+            )
+        )
+        result = await db.execute(query)
+        group_operators = result.scalars().all()
+
+        # 获取全局操作人
+        query = select(GroupOperator).where(GroupOperator.is_global == True)
+        result = await db.execute(query)
+        global_operators = result.scalars().all()
+
+        # 格式化显示
+        message = Formatter.format_operators(group_operators, global_operators)
+
+        # 检查是否全员可操作
+        query = select(Group).where(Group.group_id == chat_id)
+        result = await db.execute(query)
+        group = result.scalar_one_or_none()
+
+        if group and group.all_members_operator:
+            message += "\n\n⚠️ 当前设置为全员可操作"
+
+        await update.message.reply_text(message)
+
+
+async def enable_all_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """设置全员可操作"""
+    if not update.message or not update.effective_chat:
+        return
+
+    chat_id = update.effective_chat.id
+
+    async for db in get_db():
+        query = select(Group).where(Group.group_id == chat_id)
+        result = await db.execute(query)
+        group = result.scalar_one_or_none()
+
+        if group:
+            group.all_members_operator = True
+            await db.commit()
+            await update.message.reply_text("✅ 已设置为全员可操作")
+        else:
+            await update.message.reply_text("❌ 未找到群组配置")
+
+
+async def disable_all_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """取消全员可操作"""
+    if not update.message or not update.effective_chat:
+        return
+
+    chat_id = update.effective_chat.id
+
+    async for db in get_db():
+        query = select(Group).where(Group.group_id == chat_id)
+        result = await db.execute(query)
+        group = result.scalar_one_or_none()
+
+        if group:
+            group.all_members_operator = False
+            await db.commit()
+            await update.message.reply_text("✅ 已取消全员可操作")
+        else:
+            await update.message.reply_text("❌ 未找到群组配置")
+
+
+async def add_global_operator(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """添加全局操作人"""
+    if not update.message or not update.effective_user:
+        return
+
+    # 检查是否为超级管理员
+    from config import config
+    if update.effective_user.id != config.SUPER_ADMIN_ID:
+        await update.message.reply_text("❌ 只有超级管理员可以添加全局操作人")
+        return
+
+    # 获取要添加的用户
+    target_user = None
+
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        target_user = update.message.reply_to_message.from_user
+    elif update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == "text_mention" and entity.user:
+                target_user = entity.user
+                break
+
+    if not target_user:
+        await update.message.reply_text("❌ 请@用户或回复用户消息")
+        return
+
+    async for db in get_db():
+        # 检查是否已存在
+        query = select(GroupOperator).where(
+            and_(
+                GroupOperator.user_id == target_user.id,
+                GroupOperator.is_global == True
+            )
+        )
+        result = await db.execute(query)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            await update.message.reply_text("ℹ️ 用户已经是全局操作人")
+            return
+
+        # 添加全局操作人
+        operator = GroupOperator(
+            group_id=0,  # 全局操作人group_id为0
+            user_id=target_user.id,
+            username=target_user.username,
+            first_name=target_user.first_name,
+            is_global=True
+        )
+        db.add(operator)
+        await db.commit()
+
+        await update.message.reply_text(f"✅ 已添加 {target_user.first_name or target_user.username} 为全局操作人")
+
+
+async def show_global_operators(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """显示全局操作人"""
+    if not update.message:
+        return
+
+    async for db in get_db():
+        query = select(GroupOperator).where(GroupOperator.is_global == True)
+        result = await db.execute(query)
+        global_operators = result.scalars().all()
+
+        message = Formatter.format_operators([], global_operators)
+        await update.message.reply_text(message)
