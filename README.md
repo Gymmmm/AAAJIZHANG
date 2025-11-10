@@ -1,6 +1,20 @@
-# 飞机最强记账机器人
+# 飞机最强记账机器人 - SaaS多租户版
 
-一个功能完整的Telegram记账机器人，支持入款、下发、账单管理、汇率设置等功能。
+一个功能完整的Telegram记账机器人SaaS平台，支持：
+- 🤖 父子机器人架构（主Bot销售+子Bot服务）
+- 💳 epusdt自动支付和订阅管理
+- 🌐 完整的Web管理后台（管理员+租户）
+- 📊 网页账单展示和统计
+- 🔐 自动用户注册和密码管理
+
+## ⚡ 快速导航
+
+- **单机版部署** - 适合个人使用，直接运行一个记账机器人
+- **SaaS版部署** - 适合商业运营，销售记账机器人服务
+  - 📖 [完整SaaS指南](docs/SAAS_GUIDE.md)
+  - 🚀 [SaaS快速开始](#saas版快速开始)
+
+---
 
 ## 功能特性
 
@@ -288,6 +302,112 @@ python -m pytest tests/
 2. 首次使用需要配置超级管理员ID
 3. 建议定期备份数据库文件
 4. 生产环境建议使用PostgreSQL数据库
+
+---
+
+## 🚀 SaaS版快速开始
+
+### 系统架构
+
+SaaS版本采用父子机器人架构：
+- **父Bot（主Bot）** - 用户通过主Bot购买服务、创建子Bot实例
+- **子Bot（记账Bot）** - 为用户提供记账服务的独立机器人实例
+- **Web后台** - 管理员后台、租户后台、网页账单
+
+### 安装步骤
+
+1. **安装依赖**
+```bash
+pip install -r requirements.txt
+```
+
+2. **配置环境变量**
+```bash
+cp .env.example .env
+nano .env
+```
+
+关键配置：
+```env
+# 主Bot Token（父Bot）
+BOT_TOKEN=your_master_bot_token
+
+# epusdt支付配置
+EPUSDT_API_URL=http://your-epusdt-domain.com
+EPUSDT_API_KEY=your_api_key
+
+# Web配置
+WEB_DOMAIN=http://your-domain.com
+```
+
+3. **启动服务**
+```bash
+# 启动父Bot
+python master_bot.py
+
+# 启动Web服务
+python web_server.py
+
+# 或使用PM2
+pm2 start ecosystem.config.js
+```
+
+### 用户使用流程
+
+1. **购买服务**
+   - 用户启动父Bot → 选择价格方案 → epusdt支付 → 自动激活
+
+2. **创建机器人**
+   - 用户在@BotFather创建Bot → 提供Token给父Bot → 自动创建实例
+
+3. **获取登录凭据**
+   - 系统自动生成用户名和密码 → 访问Web后台
+
+4. **使用记账功能**
+   - 将子Bot添加到群组 → 开始记账
+
+### 功能特点
+
+#### 💳 自动支付系统
+- 集成epusdt支付网关
+- 自动识别支付并激活订阅
+- 支持月付/年付/永久订阅
+
+#### 🤖 多实例管理
+- 自动创建独立Bot实例
+- 隔离的数据和配置
+- 独立的进程管理
+
+#### 🌐 Web管理后台
+- **租户后台**：管理机器人、查看账单、修改密码
+- **管理员后台**：用户管理、订单管理、系统统计
+- **网页账单**：实时查看、筛选、导出
+
+#### 🔐 完整用户系统
+- 自动注册和凭据生成
+- JWT Token认证
+- 角色权限控制
+
+### 详细文档
+
+- 📖 [完整SaaS部署指南](docs/SAAS_GUIDE.md)
+- 📝 [API文档](docs/API.md)
+- 🚀 [部署指南](docs/DEPLOYMENT.md)
+- 📚 [命令列表](docs/COMMANDS.md)
+
+## 技术栈
+
+### 单机版
+- **Python 3.9+**
+- **python-telegram-bot** - Telegram Bot API
+- **SQLAlchemy** - ORM框架
+- **APScheduler** - 定时任务
+
+### SaaS版（新增）
+- **FastAPI** - Web框架
+- **JWT** - 用户认证
+- **epusdt** - 支付网关
+- **Multi-process** - 多实例管理
 
 ## 许可证
 
