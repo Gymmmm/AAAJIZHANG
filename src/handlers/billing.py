@@ -104,16 +104,18 @@ async def _show(update, context, history=False, personal=False):
         rows = await BillingService.get_transactions(db, gid, user_id=target.id if target else None,
                                                      current_period=not history)
 
-        # 主要账单显示使用经典格式
+        # 主要账单显示使用经典格式（好旺/汇旺风格）
         if not personal and not history:
             summary_data = Calculator.calculate_summary(rows)
-            body = Formatter.format_classic_bill(rows, summary_data, group)
+            # 默认显示全部，可通过入款显示条数限制
+            limit = group.deposit_display_count if group.deposit_display_count and group.deposit_display_count < 50 else 0
+            body = Formatter.format_classic_bill(rows, summary_data, group, display_limit=limit)
         else:
             if history:
                 shown = rows[:50]
             else:
                 shown = []
-                for kind, limit in [('deposit', group.deposit_display_count), ('withdraw', group.withdraw_display_count), ('storage', 5)]:
+                for kind, limit in [('deposit', group.deposit_display_count), ('withdraw', group.withdraw_display_count)]:
                     shown.extend([r for r in rows if r.transaction_type == kind][:limit])
                 shown.sort(key=lambda r: r.id, reverse=True)
             summary = Formatter.format_summary(Calculator.calculate_summary(rows),
