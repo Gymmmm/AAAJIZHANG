@@ -6,5 +6,7 @@ from . import operator
 from . import billing
 from . import settings
 from . import query
+from . import team
+from . import reports
 
-__all__ = ["basic", "operator", "billing", "settings", "query"]
+__all__ = ["basic", "operator", "billing", "settings", "query", "team", "reports"]
