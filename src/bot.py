@@ -14,7 +14,7 @@ from telegram.ext import (
 from config import config
 from .models import init_db, close_db
 from .services.schedule_service import ScheduleService
-from .handlers import basic, operator, billing, settings, query, reports
+from .handlers import basic, operator, billing, settings, query, reports, team
 from .services.identity import remember_update
 
 # 配置日志
@@ -144,6 +144,11 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^计算.+'), query.calculate_expression))
         application.add_handler(MessageHandler(filters.Regex(r'^(黄金价格|黄金)$'), query.query_gold_price))
         application.add_handler(MessageHandler(filters.Regex(r'^(查)?\d{17}[\dXx]$'), query.query_id_card))
+
+        # 团队功能
+        application.add_handler(MessageHandler(filters.Regex(r'^创建团队'), team.create_team))
+        application.add_handler(MessageHandler(filters.Regex(r'^团队列表$'), team.list_teams))
+        application.add_handler(MessageHandler(filters.Regex(r'^归档团队'), team.archive_team))
 
         # 辅助功能
         application.add_handler(MessageHandler(filters.Regex(r'^通知所有人$'), query.mention_all))
