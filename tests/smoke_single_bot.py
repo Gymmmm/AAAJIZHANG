@@ -21,7 +21,7 @@ async def test():
     await runner.post_init(app)
     assert app.bot_data["schedule_service"] is runner.schedule_service
     user=NS(id=12345,username="test",first_name="Test")
-    msg=NS(text="开始",message_id=1,reply_to_message=None,reply_text=AsyncMock())
+    msg=NS(text="开始",message_id=1,reply_to_message=None,reply_text=AsyncMock(return_value=NS(message_id=10001)))
     u=NS(message=msg,effective_chat=NS(id=-987654321,title="test",type="supergroup"),effective_user=user)
     await basic.start_billing(u,NS())
     msg.text="+100u";msg.message_id=2

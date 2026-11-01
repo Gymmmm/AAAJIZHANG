@@ -34,6 +34,9 @@ async def start_billing(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 group_type=update.effective_chat.type,
                 is_active=True
             )
+            from config import config
+            group.exchange_rate = config.DEFAULT_EXCHANGE_RATE
+            group.fee_rate = config.DEFAULT_FEE_RATE
             db.add(group)
         else:
             group.is_active = True
@@ -84,8 +87,8 @@ async def mute_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # 设置禁言
-        permissions = await update.effective_chat.get_permissions()
-        permissions.can_send_messages = False
+        from telegram import ChatPermissions
+        permissions = ChatPermissions(can_send_messages=False)
         await context.bot.set_chat_permissions(chat_id, permissions)
 
         async for db in get_db():
@@ -121,8 +124,10 @@ async def unmute_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # 解除禁言
-        permissions = await update.effective_chat.get_permissions()
-        permissions.can_send_messages = True
+        from telegram import ChatPermissions
+        permissions = ChatPermissions(can_send_messages=True, can_send_audios=True, can_send_documents=True,
+            can_send_photos=True, can_send_videos=True, can_send_video_notes=True, can_send_voice_notes=True,
+            can_send_polls=True, can_send_other_messages=True, can_add_web_page_previews=True)
         await context.bot.set_chat_permissions(chat_id, permissions)
 
         async for db in get_db():
@@ -146,38 +151,51 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     help_text = """
-📚 <b>飞机最强记账机器人操作说明</b>
+📚 <b>Yam 记账说明</b>
 
-<b>1️⃣ 基础功能</b>
-• 开始 - 开始记账
-• 停止 - 停止记账
-• 上课 - 打开发言（需管理员权限）
-• 下课 - 停止发言（需管理员权限）
+<b>开始与权限</b>
+开始 / 停止：管理员开启或暂停本群记账
+添加操作人 / 删除操作人：回复成员消息，或 @本群已发言的成员
+显示操作人 / 设置全员 / 取消全员
+全局操作人由机器人所有者统一管理
 
-<b>2️⃣ 账单操作</b>
-• +1000 - 记账入款
-• +1000u - USDT入款
-• +1000/7.3 - 指定汇率
-• +1000*3% - 指定费率
-• 张三+1000 - 指定用户入款
-• 下发1000 - 记账下发
-• P+1000 - 账单寄存
-• -1000 - 入款修正
+<b>记一笔账</b>
++1000：入款 1000 CNY
++100u：入款 100 USDT
+下发1000 / 下发100u：下发人民币 / USDT
+P+100 / P-100：增加 / 减少寄存（CNY）
++100u/7.3*3%：本笔汇率 7.3，费率 3%
+*0.12 表示 0.12%，不是 12%；回执会明确显示
+-100 / 下发-100u：入款 / 下发修正，另存一笔负数记录
+张三+100 / 张三下发100：指定本群已见成员
+也可回复该成员消息记账；重名时必须回复消息
 
-<b>3️⃣ 查询功能</b>
-• 显示账单 或 +0 - 显示当前账单
-• 全部账单 - 查看所有账单
-• 账单汇总 - 查看汇总统计
-• /我 - 查看我的账单
+<b>查看与纠错</b>
+显示账单 / +0：本期账单
+全部账单：历史账单
+/我 / /my：个人本期账单
+回复成员消息发送「账单」，或 查账单张三
+回复原始记账消息或回执：撤销 / 撤销恢复
+撤销入款 / 撤销下发：撤销最近一笔对应记录
 
-<b>4️⃣ 配置功能</b>
-• 设置汇率7.3
-• 设置费率3
-• 设置张三汇率7.3
-• 显示操作人
-• 添加操作人 @用户
+<b>费汇与显示</b>
+设置汇率7.3 / 设置费率3 / 设置费率3%
+设置张三费率0：个人零费率覆盖群费率
+回复成员发送「设置汇率7.6」可配置个人汇率
+费汇配置 / 删除张三配置
+设置入款条数5 / 设置下发条数5（1—50）
+纯净模式 / 显示回复人 / 显示入账人
+单币模式 / 双币模式 / 记账置顶 / 置顶关闭
 
-发送 /commands 查看完整命令列表
+<b>结账与导出</b>
+保存账单：结束本期，重新计账，历史保留
+设置日切时间06:00 / 设置日切6 / 关闭日切
+日切与账单时间使用金边时间（UTC+7）
+删除账单：作废本期；删除全部账单：作废全部历史
+导出账单：Excel 完整明细，包含撤销状态
+网页账单：本群完整账单，一小时有效链接
+
+上课 / 下课：管理员控制群发言，需要机器人有相应权限
 """
 
     await update.message.reply_text(help_text, parse_mode='HTML')

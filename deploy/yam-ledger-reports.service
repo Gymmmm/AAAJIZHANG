@@ -1,0 +1,22 @@
+[Unit]
+Description=Yam read-only ledger reports
+After=network-online.target gymmm-accounting-bot.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gymmm-accounting
+Group=gymmm-accounting
+WorkingDirectory=/opt/yam-aaajizhang/source
+EnvironmentFile=/etc/yam-aaajizhang.env
+ExecStart=/opt/yam-aaajizhang/venv/bin/uvicorn src.web.ledger_reports:app --host 127.0.0.1 --port 8082 --no-access-log
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gymmm-accounting
+
+[Install]
+WantedBy=multi-user.target

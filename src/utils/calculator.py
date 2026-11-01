@@ -32,35 +32,20 @@ class Calculator:
                 'final_amount': float  # 最终金额
             }
         """
-        result = {
-            'amount': amount,
-            'currency': currency,
-            'cny_amount': 0.0,
-            'fee_amount': 0.0,
-            'final_amount': amount
-        }
-
-        # 如果是USDT，需要转换为人民币
-        if currency == 'USDT' and exchange_rate:
-            result['cny_amount'] = amount * exchange_rate
-            base_amount = result['cny_amount']
-        else:
-            result['cny_amount'] = amount
-            base_amount = amount
-
-        # 计算手续费
-        if fee_rate:
-            result['fee_amount'] = base_amount * (fee_rate / 100)
-            result['final_amount'] = base_amount - result['fee_amount']
-        else:
-            result['final_amount'] = base_amount
-
-        # 保留2位小数
-        result['cny_amount'] = round(result['cny_amount'], 2)
-        result['fee_amount'] = round(result['fee_amount'], 2)
-        result['final_amount'] = round(result['final_amount'], 2)
-
-        return result
+        from decimal import Decimal, ROUND_HALF_UP
+        D = lambda value: Decimal(str(value))
+        amount = D(amount)
+        rate = D(exchange_rate) if exchange_rate is not None else None
+        fee = D(fee_rate) if fee_rate is not None else Decimal(0)
+        if not amount.is_finite() or (rate is not None and (not rate.is_finite() or rate <= 0)):
+            raise ValueError('金额或汇率无效。')
+        if not fee.is_finite() or not -100 <= fee <= 100:
+            raise ValueError('费率无效。')
+        cents = lambda value: value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        base = amount * rate if currency == 'USDT' and rate else amount
+        charge = cents(base * fee / 100)
+        return dict(amount=amount, currency=currency, cny_amount=cents(base),
+                    fee_amount=charge, final_amount=cents(base - charge))
 
     @staticmethod
     def evaluate_expression(expression: str) -> Optional[float]:
@@ -101,40 +86,27 @@ class Calculator:
         Returns:
             汇总数据字典
         """
-        summary = {
-            'deposit_count': 0,
-            'deposit_amount': 0.0,
-            'deposit_cny': 0.0,
-            'withdraw_count': 0,
-            'withdraw_amount': 0.0,
-            'withdraw_cny': 0.0,
-            'storage_amount': 0.0,
-            'total_fee': 0.0,
-            'net_amount': 0.0
-        }
-
+        from decimal import Decimal
+        D = lambda value: Decimal(str(value or 0))
+        summary = dict(deposit_count=0, deposit_amount=Decimal(0), deposit_cny=Decimal(0),
+                       withdraw_count=0, withdraw_amount=Decimal(0), withdraw_cny=Decimal(0),
+                       storage_amount=Decimal(0), total_fee=Decimal(0), net_amount=Decimal(0))
         for trans in transactions:
             if trans.is_deleted:
                 continue
-
-            if trans.transaction_type == 'deposit':
-                summary['deposit_count'] += 1
-                summary['deposit_amount'] += trans.amount
-                summary['deposit_cny'] += trans.cny_amount or 0
-                summary['total_fee'] += trans.fee_amount or 0
-            elif trans.transaction_type == 'withdraw':
-                summary['withdraw_count'] += 1
-                summary['withdraw_amount'] += trans.amount
-                summary['withdraw_cny'] += trans.cny_amount or 0
-                summary['total_fee'] += trans.fee_amount or 0
-            elif trans.transaction_type == 'storage':
-                summary['storage_amount'] += trans.amount
-
-        summary['net_amount'] = summary['deposit_cny'] - summary['withdraw_cny']
-
-        # 保留2位小数
-        for key in summary:
-            if isinstance(summary[key], float):
-                summary[key] = round(summary[key], 2)
-
-        return summary
+            kind = trans.transaction_type
+            if kind == 'storage':
+                summary['storage_amount'] += D(trans.amount)
+                continue
+            if kind not in ('deposit', 'withdraw'):
+                continue
+            summary[kind + '_count'] += 1
+            # Normalize mixed currencies rather than labelling CNY amounts as USDT.
+            rate = D(trans.exchange_rate)
+            u = D(trans.amount) if trans.currency == 'USDT' else (D(trans.amount) / rate if rate else Decimal(0))
+            summary[kind + '_amount'] += u
+            summary[kind + '_cny'] += D(trans.cny_amount)
+            summary['total_fee'] += D(trans.fee_amount) if kind == 'deposit' else -D(trans.fee_amount)
+        summary['net_amount'] = summary['deposit_cny'] - summary['withdraw_cny'] - summary['total_fee']
+        return {key: (value.quantize(Decimal('0.01')) if isinstance(value, Decimal) else value)
+                for key, value in summary.items()}

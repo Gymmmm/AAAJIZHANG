@@ -14,7 +14,8 @@ from telegram.ext import (
 from config import config
 from .models import init_db, close_db
 from .services.schedule_service import ScheduleService
-from .handlers import basic, operator, billing, settings, query
+from .handlers import basic, operator, billing, settings, query, reports
+from .services.identity import remember_update
 
 # 配置日志
 logging.basicConfig(
@@ -35,6 +36,7 @@ class AccountingBot:
 
     async def post_init(self, application: Application):
         """应用初始化后的操作"""
+        operator.permission_bot = application.bot
         # 初始化数据库
         await init_db()
         logger.info("Database initialized")
@@ -59,6 +61,15 @@ class AccountingBot:
     def setup_handlers(self, application: Application):
         """设置命令处理器"""
 
+        application.add_handler(MessageHandler(filters.ALL, remember_update), group=-1)
+        application.add_handler(MessageHandler(filters.Regex(r'^(撤销|撤销恢复|恢复)$'), billing.revoke_record))
+        application.add_handler(MessageHandler(filters.Regex(r'^(-\d|下发-\d)'), billing.handle_correction))
+        application.add_handler(MessageHandler(filters.Regex(r'^(导出账单|导出Excel)$'), reports.export_bills))
+        application.add_handler(MessageHandler(filters.Regex(r'^网页账单$'), reports.web_bills))
+        application.add_handler(MessageHandler(filters.Regex(r'^删除全局操作人'), operator.remove_global_operator))
+        application.add_handler(MessageHandler(filters.Regex(r'^(查账单.+|账单)$'), billing.show_my_bills))
+        application.add_handler(MessageHandler(filters.Regex(r'^(删除全部账单|清除全部账单|清除今日账单)$'), billing.delete_bills))
+        application.add_handler(MessageHandler(filters.Regex(r'^关闭日切$'), settings.set_day_cut_time))
         # 基础命令
         application.add_handler(CommandHandler("start", basic.start_billing))
         application.add_handler(CommandHandler("help", basic.show_help))
@@ -68,8 +79,8 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^下课$'), basic.mute_group))
 
         # 操作人管理
-        application.add_handler(MessageHandler(filters.Regex(r'^添加操作人'), operator.add_operator))
-        application.add_handler(MessageHandler(filters.Regex(r'^删除操作人'), operator.remove_operator))
+        application.add_handler(MessageHandler(filters.Regex(r'^添加操作[人员]'), operator.add_operator))
+        application.add_handler(MessageHandler(filters.Regex(r'^删除操作[人员]'), operator.remove_operator))
         application.add_handler(MessageHandler(filters.Regex(r'^显示操作人$'), operator.show_operators))
         application.add_handler(MessageHandler(filters.Regex(r'^设置全员$'), operator.enable_all_members))
         application.add_handler(MessageHandler(filters.Regex(r'^取消全员$'), operator.disable_all_members))
@@ -99,12 +110,12 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^保存账单$'), billing.save_bills))
 
         # 参数设置
-        application.add_handler(MessageHandler(filters.Regex(r'^设置汇率\d+'), settings.set_exchange_rate))
+        application.add_handler(MessageHandler(filters.Regex(r'^设置汇率'), settings.set_exchange_rate))
         application.add_handler(MessageHandler(filters.Regex(r'^设置.+?汇率\d+'), settings.set_exchange_rate))
-        application.add_handler(MessageHandler(filters.Regex(r'^设置费率\d+'), settings.set_fee_rate))
+        application.add_handler(MessageHandler(filters.Regex(r'^设置费率'), settings.set_fee_rate))
         application.add_handler(MessageHandler(filters.Regex(r'^设置.+?费率\d+'), settings.set_fee_rate))
-        application.add_handler(MessageHandler(filters.Regex(r'^查看费汇配置$'), settings.show_user_configs))
-        application.add_handler(MessageHandler(filters.Regex(r'^删除.+?配置$'), settings.delete_user_config))
+        application.add_handler(MessageHandler(filters.Regex(r'^(查看费汇配置|费汇配置)$'), settings.show_user_configs))
+        application.add_handler(MessageHandler(filters.Regex(r'^删除.*?配置$'), settings.delete_user_config))
 
         # 显示设置
         application.add_handler(MessageHandler(filters.Regex(r'^设置(入款|下发)条数\d+$'), settings.set_display_count))
@@ -112,7 +123,7 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^(记账置顶|置顶关闭|开启置顶|关闭置顶)$'), settings.toggle_pin))
         application.add_handler(MessageHandler(filters.Regex(r'^(双币模式|单币模式)$'), settings.toggle_currency_mode))
         application.add_handler(MessageHandler(filters.Regex(r'^(纯净模式|显示回复人|显示入账人)$'), settings.toggle_display_mode))
-        application.add_handler(MessageHandler(filters.Regex(r'^设置日切时间'), settings.set_day_cut_time))
+        application.add_handler(MessageHandler(filters.Regex(r'^设置日切'), settings.set_day_cut_time))
         application.add_handler(MessageHandler(filters.Regex(r'^群组配置$'), settings.show_group_config))
 
         # 下发地址
@@ -133,7 +144,7 @@ class AccountingBot:
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """错误处理器"""
-        logger.error(f"Update {update} caused error {context.error}")
+        logger.error("Yam handler failure: %s", type(context.error).__name__, exc_info=context.error)
 
         # 如果有消息，尝试回复错误信息
         if update and update.effective_message:

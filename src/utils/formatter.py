@@ -4,6 +4,7 @@
 from datetime import datetime
 from typing import List, Optional
 import pytz
+from config import config
 
 
 class Formatter:
@@ -32,22 +33,27 @@ class Formatter:
         # 用户信息
         user_display = trans.first_name or trans.username or f"用户{trans.user_id}"
 
+        def original_amount(value):
+            return format(value, '.6f').rstrip('0').rstrip('.') if trans.currency == 'USDT' else format(value, '.2f')
         # 金额信息
         if currency_mode == "dual":
             if trans.currency == "USDT":
-                amount_display = f"{trans.amount:.2f} USDT ≈ ¥{trans.cny_amount:.2f}"
+                amount_display = f"{original_amount(trans.amount)} USDT ≈ ¥{trans.cny_amount:.2f}"
             else:
                 amount_display = f"¥{trans.amount:.2f}"
         else:
-            amount_display = f"{trans.amount:.2f} {trans.currency}"
+            amount_display = f"{original_amount(trans.amount)} {trans.currency}"
 
         # 基本信息行
-        line = f"{type_mark} {user_display}: {amount_display}"
+        name = f" {user_display}:" if display_mode in ('reply', 'operator') else ''
+        line = f"{type_mark}{name} {amount_display}"
+        if getattr(trans, 'id', None):
+            line += f" · #{trans.id}"
 
         # 添加汇率和费率信息
-        if trans.exchange_rate:
+        if trans.exchange_rate is not None:
             line += f" (汇率:{trans.exchange_rate})"
-        if trans.fee_rate:
+        if trans.fee_rate is not None:
             line += f" (费率:{trans.fee_rate}%)"
 
         lines.append(line)
@@ -69,7 +75,10 @@ class Formatter:
             lines.append(f"   回复消息ID: {trans.reply_to_message_id}")
 
         # 时间
-        time_display = trans.transaction_date.strftime("%Y-%m-%d %H:%M:%S")
+        stamp = trans.transaction_date
+        if stamp.tzinfo is None:
+            stamp = pytz.utc.localize(stamp)
+        time_display = stamp.astimezone(pytz.timezone(config.TIMEZONE)).strftime("%Y-%m-%d %H:%M:%S")
         lines.append(f"   时间: {time_display}")
 
         return "\n".join(lines)
@@ -111,11 +120,11 @@ class Formatter:
             "=" * 30,
             "",
             f"💰 入款: {summary['deposit_count']}笔",
-            f"   总额: {summary['deposit_amount']:.2f} USDT",
+            f"   折合: {summary['deposit_amount']:.6f} USDT",
             f"   人民币: ¥{summary['deposit_cny']:.2f}",
             "",
             f"💸 下发: {summary['withdraw_count']}笔",
-            f"   总额: {summary['withdraw_amount']:.2f} USDT",
+            f"   折合: {summary['withdraw_amount']:.6f} USDT",
             f"   人民币: ¥{summary['withdraw_cny']:.2f}",
             "",
             f"📦 寄存: ¥{summary['storage_amount']:.2f}",
@@ -216,7 +225,7 @@ class Formatter:
             lines.append(f"\n👤 {user_display}:")
             if config.exchange_rate:
                 lines.append(f"   汇率: {config.exchange_rate}")
-            if config.fee_rate:
+            if config.fee_rate is not None:
                 lines.append(f"   费率: {config.fee_rate}%")
 
         return "\n".join(lines)

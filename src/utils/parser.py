@@ -8,180 +8,78 @@ from typing import Optional, Tuple, Dict, Any
 class CommandParser:
     """命令解析器"""
 
-    # 入款模式
-    DEPOSIT_PATTERNS = [
-        r'^\+(\d+(?:\.\d+)?)(u)?(?:/(\d+(?:\.\d+)?))?(?:\*(\d+(?:\.\d+)?)%?)?\s*(.*)$',  # +1000 或 +1000u/7.3*12% 备注
-        r'^(.+?)\+(\d+(?:\.\d+)?)(u)?(?:/(\d+(?:\.\d+)?))?(?:\*(\d+(?:\.\d+)?)%?)?\s*(.*)$',  # 张三+1000
-    ]
-
-    # 下发模式
-    WITHDRAW_PATTERNS = [
-        r'^下发(\d+(?:\.\d+)?)(r)?(?:/(\d+(?:\.\d+)?))?(?:\*(\d+(?:\.\d+)?)%?)?\s*(.*)$',  # 下发1000
-        r'^(.+?)下发(\d+(?:\.\d+)?)(r)?(?:/(\d+(?:\.\d+)?))?(?:\*(\d+(?:\.\d+)?)%?)?\s*(.*)$',  # 张三下发1000
-    ]
-
-    # 寄存模式
-    STORAGE_PATTERNS = [
-        r'^P([+-])(\d+(?:\.\d+)?)\s*(.*)$',  # P+1000 或 P-1000
-    ]
-
-    # 修正模式
-    CORRECTION_PATTERNS = [
-        r'^-(\d+(?:\.\d+)?)\s*(.*)$',  # -1000 (入款修正)
-        r'^下发-(\d+(?:\.\d+)?)\s*(.*)$',  # 下发-1000 (下发修正)
-    ]
+    @staticmethod
+    def _parse_entry(text, withdraw=False, correction=False):
+        from decimal import Decimal
+        number = r"\d+(?:\.\d+)?"
+        prefix = r"(?P<name>[^+*/\s]+?)?下发" if withdraw else r"(?P<name>[^+*/\s]+?)?\+"
+        if correction and not withdraw:
+            prefix = "-"
+        sign = "-" if correction and withdraw else ""
+        pattern = prefix + sign + r"(?P<amount>" + number + r")(?P<suffix>[uUrR])?(?:/(?P<rate>" + number + r"))?(?:\*(?P<fee>-?" + number + r")%?)?(?:\s+(?P<note>.*))?"
+        match = re.fullmatch(pattern, text.strip())
+        if not match:
+            return None
+        g = match.groupdict()
+        amount = Decimal(g['amount'])
+        currency = 'USDT' if g.get('suffix') else 'CNY'
+        if amount <= 0 or amount >= Decimal('1000000000000'):
+            raise ValueError('金额必须大于 0，且小于一万亿元。')
+        quantum = Decimal('0.000001') if currency == 'USDT' else Decimal('0.01')
+        if amount != amount.quantize(quantum):
+            raise ValueError('人民币最多两位小数，USDT 最多六位小数。')
+        rate = Decimal(g['rate']) if g.get('rate') else None
+        fee = Decimal(g['fee']) if g.get('fee') is not None else None
+        if rate is not None and not Decimal('0') < rate < Decimal('1000000'):
+            raise ValueError('汇率必须大于 0，且小于 1000000。')
+        if fee is not None and not Decimal('-100') <= fee <= Decimal('100'):
+            raise ValueError('费率须在 -100% 到 100% 之间。')
+        return dict(username=g.get('name'), amount=-amount if correction else amount,
+                    currency=currency, exchange_rate=rate, fee_rate=fee,
+                    note=(g.get('note') or '').strip(), is_correction=correction)
 
     @staticmethod
-    def parse_deposit(text: str) -> Optional[Dict[str, Any]]:
-        """
-        解析入款命令
-        返回: {
-            'username': Optional[str],
-            'amount': float,
-            'currency': str,
-            'exchange_rate': Optional[float],
-            'fee_rate': Optional[float],
-            'note': str
-        }
-        """
-        for pattern in CommandParser.DEPOSIT_PATTERNS:
-            match = re.match(pattern, text.strip(), re.IGNORECASE)
-            if match:
-                groups = match.groups()
-                if len(groups) == 5:  # +1000 格式
-                    amount, currency_suffix, rate, fee, note = groups
-                    return {
-                        'username': None,
-                        'amount': float(amount),
-                        'currency': 'USDT' if currency_suffix and currency_suffix.lower() == 'u' else 'CNY',
-                        'exchange_rate': float(rate) if rate else None,
-                        'fee_rate': float(fee) if fee else None,
-                        'note': note.strip() if note else ''
-                    }
-                elif len(groups) == 6:  # 张三+1000 格式
-                    username, amount, currency_suffix, rate, fee, note = groups
-                    return {
-                        'username': username.strip(),
-                        'amount': float(amount),
-                        'currency': 'USDT' if currency_suffix and currency_suffix.lower() == 'u' else 'CNY',
-                        'exchange_rate': float(rate) if rate else None,
-                        'fee_rate': float(fee) if fee else None,
-                        'note': note.strip() if note else ''
-                    }
-        return None
+    def parse_deposit(text):
+        return CommandParser._parse_entry(text)
 
     @staticmethod
-    def parse_withdraw(text: str) -> Optional[Dict[str, Any]]:
-        """
-        解析下发命令
-        返回格式同parse_deposit
-        """
-        for pattern in CommandParser.WITHDRAW_PATTERNS:
-            match = re.match(pattern, text.strip(), re.IGNORECASE)
-            if match:
-                groups = match.groups()
-                if len(groups) == 5:  # 下发1000 格式
-                    amount, currency_suffix, rate, fee, note = groups
-                    return {
-                        'username': None,
-                        'amount': float(amount),
-                        'currency': 'USDT' if currency_suffix and currency_suffix.lower() == 'r' else 'CNY',
-                        'exchange_rate': float(rate) if rate else None,
-                        'fee_rate': float(fee) if fee else None,
-                        'note': note.strip() if note else ''
-                    }
-                elif len(groups) == 6:  # 张三下发1000 格式
-                    username, amount, currency_suffix, rate, fee, note = groups
-                    return {
-                        'username': username.strip(),
-                        'amount': float(amount),
-                        'currency': 'USDT' if currency_suffix and currency_suffix.lower() == 'r' else 'CNY',
-                        'exchange_rate': float(rate) if rate else None,
-                        'fee_rate': float(fee) if fee else None,
-                        'note': note.strip() if note else ''
-                    }
-        return None
+    def parse_withdraw(text):
+        return CommandParser._parse_entry(text, withdraw=True)
 
     @staticmethod
-    def parse_storage(text: str) -> Optional[Dict[str, Any]]:
-        """
-        解析寄存命令
-        返回: {
-            'operation': str,  # '+' or '-'
-            'amount': float,
-            'note': str
-        }
-        """
-        for pattern in CommandParser.STORAGE_PATTERNS:
-            match = re.match(pattern, text.strip(), re.IGNORECASE)
-            if match:
-                operation, amount, note = match.groups()
-                return {
-                    'operation': operation,
-                    'amount': float(amount),
-                    'note': note.strip() if note else ''
-                }
-        return None
+    def parse_storage(text):
+        from decimal import Decimal
+        match = re.fullmatch(r'P([+-])(\d+(?:\.\d{1,2})?)(?:\s+(.*))?', text.strip(), re.I)
+        if not match:
+            return None
+        op, amount, note = match.groups()
+        value = Decimal(amount)
+        if value <= 0 or value >= Decimal('1000000000000'):
+            raise ValueError('寄存金额不正确。')
+        return dict(operation=op, amount=value, note=note or '')
 
     @staticmethod
-    def parse_correction(text: str) -> Optional[Dict[str, Any]]:
-        """
-        解析修正命令
-        返回: {
-            'type': str,  # 'deposit' or 'withdraw'
-            'amount': float,
-            'note': str
-        }
-        """
-        for i, pattern in enumerate(CommandParser.CORRECTION_PATTERNS):
-            match = re.match(pattern, text.strip(), re.IGNORECASE)
-            if match:
-                if i == 0:  # 入款修正
-                    amount, note = match.groups()
-                    return {
-                        'type': 'deposit',
-                        'amount': float(amount),
-                        'note': note.strip() if note else ''
-                    }
-                elif i == 1:  # 下发修正
-                    amount, note = match.groups()
-                    return {
-                        'type': 'withdraw',
-                        'amount': float(amount),
-                        'note': note.strip() if note else ''
-                    }
-        return None
+    def parse_correction(text):
+        withdraw = text.strip().startswith('下发-')
+        value = CommandParser._parse_entry(text, withdraw=withdraw, correction=True)
+        if value:
+            value['type'] = 'withdraw' if withdraw else 'deposit'
+        return value
 
     @staticmethod
-    def parse_rate_setting(text: str) -> Optional[Dict[str, Any]]:
-        """
-        解析汇率/费率设置命令
-        设置汇率7.3
-        设置费率3
-        设置张三汇率7.3
-        设置张三费率3
-        """
-        # 设置汇率
-        match = re.match(r'^设置汇率(\d+(?:\.\d+)?)$', text.strip())
-        if match:
-            return {'type': 'exchange_rate', 'username': None, 'value': float(match.group(1))}
-
-        # 设置费率
-        match = re.match(r'^设置费率(\d+(?:\.\d+)?)%?$', text.strip())
-        if match:
-            return {'type': 'fee_rate', 'username': None, 'value': float(match.group(1))}
-
-        # 设置某人汇率
-        match = re.match(r'^设置(.+?)汇率(\d+(?:\.\d+)?)$', text.strip())
-        if match:
-            return {'type': 'exchange_rate', 'username': match.group(1).strip(), 'value': float(match.group(2))}
-
-        # 设置某人费率
-        match = re.match(r'^设置(.+?)费率(\d+(?:\.\d+)?)%?$', text.strip())
-        if match:
-            return {'type': 'fee_rate', 'username': match.group(1).strip(), 'value': float(match.group(2))}
-
-        return None
+    def parse_rate_setting(text):
+        from decimal import Decimal
+        match = re.fullmatch(r'设置(.*?)(汇率|费率)(-?\d+(?:\.\d+)?)(%)?', text.strip())
+        if not match:
+            return None
+        name, kind, value, percent = match.groups()
+        value = Decimal(value)
+        if kind == '汇率' and (percent or not Decimal('0') < value < Decimal('1000000')):
+            raise ValueError('汇率必须大于 0，且小于 1000000。')
+        if kind == '费率' and not Decimal('-100') <= value <= Decimal('100'):
+            raise ValueError('费率须在 -100% 到 100% 之间。')
+        return dict(type='exchange_rate' if kind == '汇率' else 'fee_rate',
+                    username=name.removesuffix('的') or None, value=value)
 
     @staticmethod
     def parse_display_count(text: str) -> Optional[Dict[str, Any]]:
@@ -213,10 +111,10 @@ class CommandParser:
         解析日切时间设置
         设置日切时间23:59
         """
-        match = re.match(r'^设置日切时间(\d{1,2}):(\d{2})$', text.strip())
+        match = re.match(r'^设置日切(?:时间)?(\d{1,2})(?::(\d{2}))?$', text.strip())
         if match:
             hour, minute = match.groups()
-            return f"{hour.zfill(2)}:{minute}"
+            return f"{hour.zfill(2)}:{minute or '00'}"
         return None
 
     @staticmethod

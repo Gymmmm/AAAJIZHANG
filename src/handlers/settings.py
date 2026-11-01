@@ -12,194 +12,87 @@ from ..utils.formatter import Formatter
 from .operator import is_operator
 
 
-async def set_exchange_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """设置汇率"""
-    if not update.message or not update.effective_chat or not update.effective_user:
-        return
-
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-    text = update.message.text
-
+async def _set_rate(update, context):
+    from ..services.identity import resolve_user
+    from ..models import LedgerAudit
     async for db in get_db():
-        # 检查操作权限
-        if not await is_operator(user.id, chat_id, db):
+        gid, uid = update.effective_chat.id, update.effective_user.id
+        if not await is_operator(uid, gid, db):
             await update.message.reply_text("❌ 您没有操作权限")
             return
-
-        # 解析设置命令
-        rate_info = CommandParser.parse_rate_setting(text)
-
-        if not rate_info or rate_info['type'] != 'exchange_rate':
-            return
-
-        # 如果指定了用户名，设置个人汇率
-        if rate_info['username']:
-            # TODO: 需要通过用户名查找用户ID，这里简化处理
-            await update.message.reply_text("❌ 请使用回复消息的方式设置个人汇率")
-            return
-        # 如果是回复消息，设置个人汇率
-        elif update.message.reply_to_message and update.message.reply_to_message.from_user:
-            target_user = update.message.reply_to_message.from_user
-
-            # 查找或创建用户配置
-            query = select(UserConfig).where(
-                and_(
-                    UserConfig.group_id == chat_id,
-                    UserConfig.user_id == target_user.id
-                )
-            )
-            result = await db.execute(query)
-            user_config = result.scalar_one_or_none()
-
-            if not user_config:
-                user_config = UserConfig(
-                    group_id=chat_id,
-                    user_id=target_user.id,
-                    username=target_user.username,
-                    first_name=target_user.first_name
-                )
-                db.add(user_config)
-
-            user_config.exchange_rate = rate_info['value']
+        try:
+            info = CommandParser.parse_rate_setting(update.message.text)
+            if not info:
+                await update.message.reply_text("格式：设置汇率7.3 或 设置费率3%。")
+                return
+            reply = update.message.reply_to_message
+            name = info['username']
+            target = None
+            if name not in (None, '他', '她'):
+                target = await resolve_user(db, gid, name)
+            elif reply and reply.from_user and not reply.from_user.is_bot:
+                target = reply.from_user
+            elif name:
+                raise ValueError('请回复成员消息设置个人配置。')
+            if target:
+                row = (await db.execute(select(UserConfig).where(UserConfig.group_id == gid,
+                    UserConfig.user_id == target.id))).scalar_one_or_none()
+                if not row:
+                    row = UserConfig(group_id=gid, user_id=target.id, username=target.username, first_name=target.first_name)
+                    db.add(row)
+                label = target.first_name or target.username or str(target.id)
+            else:
+                row = (await db.execute(select(Group).where(Group.group_id == gid))).scalar_one_or_none()
+                if not row:
+                    raise ValueError('请先发送「开始」。')
+                label = '本群'
+            old = getattr(row, info['type'])
+            setattr(row, info['type'], float(info['value']))
+            db.add(LedgerAudit(group_id=gid, actor_id=uid, action='set_' + info['type'],
+                               detail=f'{label}: {old} -> {info["value"]}'))
             await db.commit()
+            unit = '%' if info['type'] == 'fee_rate' else ' CNY / USDT'
+            await update.message.reply_text(f'✅ {label} {"费率" if info["type"] == "fee_rate" else "汇率"}：{info["value"]}{unit}')
+        except ValueError as error:
+            await update.message.reply_text(str(error))
 
-            user_display = target_user.first_name or target_user.username
-            await update.message.reply_text(f"✅ 已设置 {user_display} 的汇率为 {rate_info['value']}")
-        else:
-            # 设置群组默认汇率
-            query = select(Group).where(Group.group_id == chat_id)
-            result = await db.execute(query)
-            group = result.scalar_one_or_none()
+async def set_exchange_rate(update, context):
+    await _set_rate(update, context)
 
-            if group:
-                group.exchange_rate = rate_info['value']
-                await db.commit()
-                await update.message.reply_text(f"✅ 已设置群组汇率为 {rate_info['value']}")
-            else:
-                await update.message.reply_text("❌ 未找到群组配置")
+async def set_fee_rate(update, context):
+    await _set_rate(update, context)
 
-
-async def set_fee_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """设置费率"""
-    if not update.message or not update.effective_chat or not update.effective_user:
-        return
-
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-    text = update.message.text
-
+async def show_user_configs(update, context):
     async for db in get_db():
-        # 检查操作权限
-        if not await is_operator(user.id, chat_id, db):
-            await update.message.reply_text("❌ 您没有操作权限")
+        if not await is_operator(update.effective_user.id, update.effective_chat.id, db):
+            await update.message.reply_text('❌ 您没有操作权限')
             return
+        configs = (await db.execute(select(UserConfig).where(UserConfig.group_id == update.effective_chat.id))).scalars().all()
+        await update.message.reply_text(Formatter.format_user_configs(configs))
 
-        # 解析设置命令
-        rate_info = CommandParser.parse_rate_setting(text)
-
-        if not rate_info or rate_info['type'] != 'fee_rate':
-            return
-
-        # 如果是回复消息，设置个人费率
-        if update.message.reply_to_message and update.message.reply_to_message.from_user:
-            target_user = update.message.reply_to_message.from_user
-
-            # 查找或创建用户配置
-            query = select(UserConfig).where(
-                and_(
-                    UserConfig.group_id == chat_id,
-                    UserConfig.user_id == target_user.id
-                )
-            )
-            result = await db.execute(query)
-            user_config = result.scalar_one_or_none()
-
-            if not user_config:
-                user_config = UserConfig(
-                    group_id=chat_id,
-                    user_id=target_user.id,
-                    username=target_user.username,
-                    first_name=target_user.first_name
-                )
-                db.add(user_config)
-
-            user_config.fee_rate = rate_info['value']
-            await db.commit()
-
-            user_display = target_user.first_name or target_user.username
-            await update.message.reply_text(f"✅ 已设置 {user_display} 的费率为 {rate_info['value']}%")
-        else:
-            # 设置群组默认费率
-            query = select(Group).where(Group.group_id == chat_id)
-            result = await db.execute(query)
-            group = result.scalar_one_or_none()
-
-            if group:
-                group.fee_rate = rate_info['value']
-                await db.commit()
-                await update.message.reply_text(f"✅ 已设置群组费率为 {rate_info['value']}%")
-            else:
-                await update.message.reply_text("❌ 未找到群组配置")
-
-
-async def show_user_configs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """查看费汇配置"""
-    if not update.message or not update.effective_chat:
-        return
-
-    chat_id = update.effective_chat.id
-
+async def delete_user_config(update, context):
+    from ..services.identity import resolve_user
     async for db in get_db():
-        # 获取所有用户配置
-        query = select(UserConfig).where(UserConfig.group_id == chat_id)
-        result = await db.execute(query)
-        configs = result.scalars().all()
-
-        # 格式化消息
-        message = Formatter.format_user_configs(configs)
-
-        await update.message.reply_text(message)
-
-
-async def delete_user_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """删除用户配置"""
-    if not update.message or not update.effective_chat or not update.effective_user:
-        return
-
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-
-    async for db in get_db():
-        # 检查操作权限
-        if not await is_operator(user.id, chat_id, db):
-            await update.message.reply_text("❌ 您没有操作权限")
+        gid = update.effective_chat.id
+        if not await is_operator(update.effective_user.id, gid, db):
+            await update.message.reply_text('❌ 您没有操作权限')
             return
-
-        # 如果是回复消息
-        if update.message.reply_to_message and update.message.reply_to_message.from_user:
-            target_user = update.message.reply_to_message.from_user
-
-            # 查找用户配置
-            query = select(UserConfig).where(
-                and_(
-                    UserConfig.group_id == chat_id,
-                    UserConfig.user_id == target_user.id
-                )
-            )
-            result = await db.execute(query)
-            user_config = result.scalar_one_or_none()
-
-            if user_config:
-                await db.delete(user_config)
-                await db.commit()
-
-                user_display = target_user.first_name or target_user.username
-                await update.message.reply_text(f"✅ 已删除 {user_display} 的费汇配置")
+        try:
+            name = update.message.text.removeprefix('删除').removesuffix('配置').strip()
+            reply = update.message.reply_to_message
+            if name not in ('他','他的','她','她的',''):
+                target = await resolve_user(db, gid, name)
+            elif reply and reply.from_user and not reply.from_user.is_bot:
+                target = reply.from_user
             else:
-                await update.message.reply_text("❌ 未找到该用户的配置")
-        else:
-            await update.message.reply_text("❌ 请回复用户消息来删除配置")
+                raise ValueError('请回复该成员的消息，再发送「删除配置」。')
+            row = (await db.execute(select(UserConfig).where(UserConfig.group_id == gid, UserConfig.user_id == target.id))).scalar_one_or_none()
+            if row:
+                await db.delete(row)
+                await db.commit()
+            await update.message.reply_text('✅ 已清除该成员的个人费汇配置，后续使用群默认配置。')
+        except ValueError as error:
+            await update.message.reply_text(str(error))
 
 
 async def set_display_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -220,7 +113,8 @@ async def set_display_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 解析命令
         count_info = CommandParser.parse_display_count(text)
 
-        if not count_info:
+        if not count_info or not 1 <= count_info['count'] <= 50:
+            await update.message.reply_text('显示条数须在 1 到 50 之间。')
             return
 
         # 更新群组配置
@@ -270,7 +164,7 @@ async def set_currency_display(update: Update, context: ContextTypes.DEFAULT_TYP
         if group:
             group.currency_display = currency
             await db.commit()
-            await update.message.reply_text(f"✅ 已设置显示币种为 {currency}")
+            await update.message.reply_text(f"✅ 已设置显示币种标签为 {currency}；不会改变原始入账币种或金额。")
         else:
             await update.message.reply_text("❌ 未找到群组配置")
 
@@ -394,9 +288,20 @@ async def set_day_cut_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # 解析时间
+        if text == '关闭日切':
+            group = (await db.execute(select(Group).where(Group.group_id == chat_id))).scalar_one_or_none()
+            if group:
+                group.day_cut_time = None
+                await db.commit()
+                service = context.application.bot_data.get('schedule_service')
+                if service:
+                    await service.remove_day_cut_task(chat_id)
+                await update.message.reply_text('✅ 已关闭自动日切，账期可手动保存。')
+            return
         time_str = CommandParser.parse_day_cut_time(text)
 
         if not time_str:
+            await update.message.reply_text('格式：设置日切时间06:00，或 关闭日切。')
             return
 
         try:
