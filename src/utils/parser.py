@@ -22,7 +22,13 @@ class CommandParser:
             return None
         g = match.groupdict()
         amount = Decimal(g['amount'])
-        currency = 'USDT' if g.get('suffix') else 'CNY'
+        suffix = (g.get('suffix') or '').upper()
+        if suffix == 'U':
+            currency = 'USDT'
+        elif suffix == 'R':
+            currency = 'CNY'
+        else:
+            currency = 'CNY'  # 默认 CNY
         if amount <= 0 or amount >= Decimal('1000000000000'):
             raise ValueError('金额必须大于 0，且小于一万亿元。')
         quantum = Decimal('0.000001') if currency == 'USDT' else Decimal('0.01')
