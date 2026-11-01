@@ -35,8 +35,7 @@ class Formatter:
 
         name_part = f" {user_display}" if display_mode in ('reply', 'operator') else ""
         main = f"{type_mark}{name_part} {amount_display}"
-        if getattr(trans, 'id', None):
-            main += f" #{trans.id}"
+        # 不再默认显示 #id，避免"123"式编号
 
         extras = []
         if trans.exchange_rate is not None:
@@ -162,7 +161,7 @@ class Formatter:
         currency_mode: str = "single",
         limit: Optional[int] = None
     ) -> str:
-        """格式化交易列表（更紧凑）"""
+        """格式化交易列表（更紧凑，不显示序号）"""
         if not transactions:
             return f"📋 {title}\n暂无记录"
 
@@ -170,13 +169,14 @@ class Formatter:
 
         display_transactions = transactions[:limit] if limit else transactions
 
-        for i, trans in enumerate(display_transactions, 1):
-            lines.append(f"{i}. {Formatter.format_transaction(trans, display_mode, currency_mode)}")
+        for trans in display_transactions:
+            lines.append(Formatter.format_transaction(trans, display_mode, currency_mode))
+            lines.append("")  # 空行分隔
 
         if limit and len(transactions) > limit:
-            lines.append(f"\n… 还有 {len(transactions) - limit} 条")
+            lines.append(f"… 还有 {len(transactions) - limit} 条")
 
-        return "\n".join(lines)
+        return "\n".join(lines).rstrip()
 
     @staticmethod
     def format_summary(summary: dict, title: str = "账单汇总") -> str:
