@@ -96,7 +96,6 @@ async def _show(update, context, history=False, personal=False):
         if not group:
             await update.message.reply_text('请管理员先发送「开始」。')
             return
-        # Querying another person's account requires ledger operator privileges.
         name = update.message.text.removeprefix('查账单').strip() if update.message.text.startswith('查账单') else None
         target = await target_user(update, db, name) if personal else None
         if target and target.id != update.effective_user.id and not await is_operator(update.effective_user.id, gid, db):
@@ -104,26 +103,32 @@ async def _show(update, context, history=False, personal=False):
             return
         rows = await BillingService.get_transactions(db, gid, user_id=target.id if target else None,
                                                      current_period=not history)
-        if history:
-            shown = rows[:50]
+
+        # 主要账单显示使用经典格式
+        if not personal and not history:
+            summary_data = Calculator.calculate_summary(rows)
+            body = Formatter.format_classic_bill(rows, summary_data, group)
         else:
-            shown = []
-            for kind, limit in [('deposit', group.deposit_display_count), ('withdraw', group.withdraw_display_count), ('storage', 5)]:
-                shown.extend([r for r in rows if r.transaction_type == kind][:limit])
-            shown.sort(key=lambda r:r.id, reverse=True)
-        summary = Formatter.format_summary(Calculator.calculate_summary(rows),
-                                          '历史账单' if history else '本期账单')
-        body = summary + '\n\n' + Formatter.format_transaction_list(
-            shown, '明细',
-            display_mode=group.display_mode,
-            currency_mode=group.currency_mode
-        )
-        if len(shown) < len(rows):
-            body += '\n\n更多明细请发送「导出账单」或「网页账单」。'
+            if history:
+                shown = rows[:50]
+            else:
+                shown = []
+                for kind, limit in [('deposit', group.deposit_display_count), ('withdraw', group.withdraw_display_count), ('storage', 5)]:
+                    shown.extend([r for r in rows if r.transaction_type == kind][:limit])
+                shown.sort(key=lambda r: r.id, reverse=True)
+            summary = Formatter.format_summary(Calculator.calculate_summary(rows),
+                                              '历史账单' if history else '本期账单')
+            body = summary + '\n\n' + Formatter.format_transaction_list(
+                shown, '明细',
+                display_mode=group.display_mode,
+                currency_mode=group.currency_mode
+            )
+            if len(shown) < len(rows):
+                body += '\n\n更多明细请发送「导出账单」或「网页账单」。'
+
         await reply_chunks(update.message, body)
 
 async def reply_chunks(message, body):
-    # Keep each Telegram message below its text limit.
     while body:
         end = min(3800, len(body))
         if len(body) > end:
