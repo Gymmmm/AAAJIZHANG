@@ -107,8 +107,13 @@ async def _show(update, context, history=False, personal=False):
         # 主要账单显示使用经典格式（好旺/汇旺风格）
         if not personal and not history:
             summary_data = Calculator.calculate_summary(rows)
-            # 默认显示全部，可通过入款显示条数限制
-            limit = group.deposit_display_count if group.deposit_display_count and group.deposit_display_count < 50 else 0
+            # display_count=0 表示模式3（仅汇总），>0 表示最近N笔，其他默认全部
+            if group.deposit_display_count == 0:
+                limit = -1
+            elif group.deposit_display_count and group.deposit_display_count < 50:
+                limit = group.deposit_display_count
+            else:
+                limit = 0
             body = Formatter.format_classic_bill(rows, summary_data, group, display_limit=limit)
         else:
             if history:
