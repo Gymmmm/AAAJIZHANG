@@ -113,7 +113,11 @@ async def _show(update, context, history=False, personal=False):
             shown.sort(key=lambda r:r.id, reverse=True)
         summary = Formatter.format_summary(Calculator.calculate_summary(rows),
                                           '历史账单' if history else '本期账单')
-        body = summary + '\n\n' + Formatter.format_transaction_list(shown, '明细')
+        body = summary + '\n\n' + Formatter.format_transaction_list(
+            shown, '明细',
+            display_mode=group.display_mode,
+            currency_mode=group.currency_mode
+        )
         if len(shown) < len(rows):
             body += '\n\n更多明细请发送「导出账单」或「网页账单」。'
         await reply_chunks(update.message, body)
