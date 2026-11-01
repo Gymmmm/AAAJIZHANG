@@ -117,6 +117,7 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^设置.+?费率\\d+'), settings.set_fee_rate))
         application.add_handler(MessageHandler(filters.Regex(r'^(查看费汇配置|费汇配置)$'), settings.show_user_configs))
         application.add_handler(MessageHandler(filters.Regex(r'^删除.*? 配置$'), settings.delete_user_config))
+        application.add_handler(MessageHandler(filters.Regex(r'^设置实时汇率$'), settings.set_real_time_rate))
 
         # 显示设置
         application.add_handler(MessageHandler(filters.Regex(r'^设置(入款|下发)条数\\d+$'), settings.set_display_count))
@@ -125,6 +126,7 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^(记账置顶|置顶关闭|开启置顶|关闭置顶)$'), settings.toggle_pin))
         application.add_handler(MessageHandler(filters.Regex(r'^(双币模式|单币模式)$'), settings.toggle_currency_mode))
         application.add_handler(MessageHandler(filters.Regex(r'^(纯净模式|显示回复人|显示入账人)$'), settings.toggle_display_mode))
+        application.add_handler(MessageHandler(filters.Regex(r'^(开启分类|关闭分类)$'), settings.toggle_category))
         application.add_handler(MessageHandler(filters.Regex(r'^设置日切'), settings.set_day_cut_time))
         application.add_handler(MessageHandler(filters.Regex(r'^群组配置$'), settings.show_group_config))
 
