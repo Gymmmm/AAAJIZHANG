@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 import httpx
 import re
 from datetime import datetime
+from math import radians, cos, sin, asin, sqrt
 
 from ..services.exchange_service import ExchangeService
 from ..utils.parser import CommandParser
@@ -110,7 +111,7 @@ async def query_trc20_address(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ 获取地址信息失败")
 
 async def query_trc20_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """查询TRC20地址交易记录"""
+    """查询TRC20地址交易记录（查U记录）"""
     if not update.message:
         return
     text = update.message.text.strip()
@@ -125,6 +126,94 @@ async def query_trc20_transactions(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(message)
     else:
         await update.message.reply_text("❌ 获取交易记录失败")
+
+async def query_fiat_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """查询法币汇率（自定义币种）"""
+    if not update.message:
+        return
+    text = update.message.text.strip()
+    # 法币汇率CNY 或 法币汇率 USD
+    match = re.match(r'^法币汇率\s*([A-Za-z]{3})$', text, re.IGNORECASE)
+    if not match:
+        await update.message.reply_text("格式：法币汇率CNY")
+        return
+    currency = match.group(1).upper()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # 使用免费汇率接口
+            resp = await client.get(f"https://api.exchangerate-api.com/v4/latest/USDT")
+            if resp.status_code == 200:
+                data = resp.json()
+                rate = data.get("rates", {}).get(currency)
+                if rate:
+                    await update.message.reply_text(f"💱 {currency} 汇率: 1 USDT = {rate:.4f} {currency}")
+                    return
+    except Exception:
+        pass
+    await update.message.reply_text(f"❌ 获取 {currency} 汇率失败")
+
+async def query_distance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """两地距离（回复带地址的消息）"""
+    if not update.message or not update.message.reply_to_message:
+        await update.message.reply_text("请回复带地址的消息后发送两地距离")
+        return
+    addr1 = update.message.reply_to_message.text.strip()
+    addr2 = update.message.text.replace("两地距离", "").strip()
+    if not addr2:
+        await update.message.reply_text("请在命令后填写目标地址")
+        return
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # 简单地理编码（使用 Nominatim）
+            async def geocode(addr):
+                r = await client.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"q": addr, "format": "json", "limit": 1},
+                    headers={"User-Agent": "AAAJIZHANG-Bot"}
+                )
+                if r.status_code == 200 and r.json():
+                    d = r.json()[0]
+                    return float(d["lat"]), float(d["lon"])
+                return None, None
+            lat1, lon1 = await geocode(addr1)
+            lat2, lon2 = await geocode(addr2)
+            if lat1 and lat2:
+                # Haversine
+                lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+                dlon = lon2 - lon1
+                dlat = lat2 - lat1
+                a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                c = 2 * asin(sqrt(a))
+                km = 6371 * c
+                await update.message.reply_text(f"📍 距离约 {km:.1f} 公里")
+                return
+    except Exception:
+        pass
+    await update.message.reply_text("❌ 无法解析地址或计算距离")
+
+async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """群发广播（基础版：向当前群发送广播内容）"""
+    if not update.message or not update.effective_chat or not update.effective_user:
+        return
+    from sqlalchemy import select
+    from ..models import Group, get_db
+    from .operator import is_operator
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    text = update.message.text
+    async for db in get_db():
+        if not await is_operator(user.id, chat_id, db):
+            await update.message.reply_text("❌ 您没有操作权限")
+            return
+        content = text.removeprefix("群发广播").strip()
+        if not content:
+            await update.message.reply_text("格式：群发广播 内容")
+            return
+        try:
+            await context.bot.send_message(chat_id, f"📢 广播：{content}")
+            await update.message.reply_text("✅ 广播已发送")
+        except Exception as e:
+            await update.message.reply_text(f"❌ 发送失败: {e}")
 
 async def calculate_expression(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """计算功能"""
