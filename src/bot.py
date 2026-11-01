@@ -138,12 +138,16 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^h0$'), query.query_huobi_price))
         application.add_handler(MessageHandler(filters.Regex(r'^z0$'), query.query_okex_price))
         application.add_handler(MessageHandler(filters.Regex(r'^T[A-Za-z0-9]{33}$'), query.query_trc20_address))
+        application.add_handler(MessageHandler(filters.Regex(r'^查U记录'), query.query_trc20_transactions))
+        application.add_handler(MessageHandler(filters.Regex(r'^法币汇率'), query.query_fiat_rate))
+        application.add_handler(MessageHandler(filters.Regex(r'^两地距离'), query.query_distance))
         application.add_handler(MessageHandler(filters.Regex(r'^计算.+'), query.calculate_expression))
         application.add_handler(MessageHandler(filters.Regex(r'^(黄金价格|黄金)$'), query.query_gold_price))
         application.add_handler(MessageHandler(filters.Regex(r'^(查)?\d{17}[\dXx]$'), query.query_id_card))
 
         # 辅助功能
         application.add_handler(MessageHandler(filters.Regex(r'^通知所有人$'), query.mention_all))
+        application.add_handler(MessageHandler(filters.Regex(r'^群发广播'), query.broadcast_message))
         application.add_handler(MessageHandler(filters.Regex(r'^设置分组'), query.set_group_tag))
         application.add_handler(MessageHandler(filters.Regex(r'^(设置代收|设置代付)$'), query.set_business_mode))
         application.add_handler(MessageHandler(filters.Regex(r'^拉停$'), query.stop_trading))
