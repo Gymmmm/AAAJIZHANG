@@ -6,11 +6,15 @@ from telegram.ext import ContextTypes
 from sqlalchemy import select
 
 from ..models import Group, get_db
+from .operator import require_manager
 
 
 async def start_billing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """开始记账"""
     if not update.message or not update.effective_chat:
+        return
+
+    if not await require_manager(update, context):
         return
 
     chat_id = update.effective_chat.id
@@ -44,6 +48,9 @@ async def stop_billing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_chat:
         return
 
+    if not await require_manager(update, context):
+        return
+
     chat_id = update.effective_chat.id
 
     async for db in get_db():
@@ -62,6 +69,9 @@ async def stop_billing(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mute_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """下课（禁言模式）- 需要机器人为管理员"""
     if not update.message or not update.effective_chat:
+        return
+
+    if not await require_manager(update, context):
         return
 
     chat_id = update.effective_chat.id
@@ -96,6 +106,9 @@ async def mute_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unmute_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """上课（解除禁言）- 需要机器人为管理员"""
     if not update.message or not update.effective_chat:
+        return
+
+    if not await require_manager(update, context):
         return
 
     chat_id = update.effective_chat.id

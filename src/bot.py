@@ -21,6 +21,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +41,7 @@ class AccountingBot:
 
         # 初始化定时任务服务
         self.schedule_service = ScheduleService(application.bot)
-        application.schedule_service = self.schedule_service
+        application.bot_data["schedule_service"] = self.schedule_service
         await self.schedule_service.start()
         logger.info("Schedule service started")
 
@@ -75,6 +76,9 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^显示全局操作人$'), operator.show_global_operators))
         application.add_handler(MessageHandler(filters.Regex(r'^添加全局操作人'), operator.add_global_operator))
 
+        application.add_handler(MessageHandler(filters.Regex(r"^\+0$"), billing.show_bills))
+        application.add_handler(MessageHandler(filters.Regex(r"^/我(?:@\w+)?$"), billing.show_my_bills))
+
         # 账单操作
         application.add_handler(MessageHandler(filters.Regex(r'^\+\d+'), billing.handle_deposit))
         application.add_handler(MessageHandler(filters.Regex(r'^.+?\+\d+'), billing.handle_deposit))
@@ -86,7 +90,7 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^(显示账单|\+0)$'), billing.show_bills))
         application.add_handler(MessageHandler(filters.Regex(r'^全部账单$'), billing.show_all_bills))
         application.add_handler(MessageHandler(filters.Regex(r'^账单汇总$'), billing.show_summary))
-        application.add_handler(CommandHandler("我", billing.show_my_bills))
+        application.add_handler(CommandHandler("my", billing.show_my_bills))
 
         # 账单管理
         application.add_handler(MessageHandler(filters.Regex(r'^撤销入款$'), billing.revoke_deposit))

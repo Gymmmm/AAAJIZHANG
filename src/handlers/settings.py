@@ -414,8 +414,8 @@ async def set_day_cut_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 # 更新定时任务
                 from ..services.schedule_service import ScheduleService
-                if hasattr(context.application, 'schedule_service'):
-                    await context.application.schedule_service.add_day_cut_task(group)
+                if context.application.bot_data.get("schedule_service"):
+                    await context.application.bot_data["schedule_service"].add_day_cut_task(group)
 
                 await update.message.reply_text(f"✅ 已设置日切时间为 {time_str}")
             else:

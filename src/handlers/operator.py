@@ -5,12 +5,30 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from sqlalchemy import select, and_
 
+from config import config
 from ..models import Group, GroupOperator, get_db
 from ..utils.formatter import Formatter
 
 
+async def require_manager(update, context):
+    """Only the configured owner or Telegram group administrators manage access."""
+    if not update.effective_user or not update.effective_chat:
+        return False
+    if update.effective_user.id == config.SUPER_ADMIN_ID:
+        return True
+    if update.effective_chat.type in ("group", "supergroup"):
+        member = await context.bot.get_chat_member(update.effective_chat.id, update.effective_user.id)
+        if member.status in ("administrator", "creator"):
+            return True
+    await update.message.reply_text("❌ 只有管理员可以执行此操作")
+    return False
+
+
 async def is_operator(user_id: int, group_id: int, db) -> bool:
     """检查用户是否为操作人"""
+    if user_id == config.SUPER_ADMIN_ID:
+        return True
+
     # 检查群组是否设置全员可操作
     query = select(Group).where(Group.group_id == group_id)
     result = await db.execute(query)
@@ -48,6 +66,9 @@ async def is_operator(user_id: int, group_id: int, db) -> bool:
 async def add_operator(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """添加操作人"""
     if not update.message or not update.effective_chat:
+        return
+
+    if not await require_manager(update, context):
         return
 
     chat_id = update.effective_chat.id
@@ -123,6 +144,9 @@ async def add_operator(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def remove_operator(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """删除操作人"""
     if not update.message or not update.effective_chat:
+        return
+
+    if not await require_manager(update, context):
         return
 
     chat_id = update.effective_chat.id
@@ -211,6 +235,9 @@ async def enable_all_members(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not update.message or not update.effective_chat:
         return
 
+    if not await require_manager(update, context):
+        return
+
     chat_id = update.effective_chat.id
 
     async for db in get_db():
@@ -229,6 +256,9 @@ async def enable_all_members(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def disable_all_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """取消全员可操作"""
     if not update.message or not update.effective_chat:
+        return
+
+    if not await require_manager(update, context):
         return
 
     chat_id = update.effective_chat.id
