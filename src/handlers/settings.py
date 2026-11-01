@@ -317,6 +317,50 @@ async def toggle_display_mode(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ 未找到群组配置")
 
 
+async def toggle_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """开启/关闭账单分类"""
+    if not update.message or not update.effective_chat or not update.effective_user:
+        return
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    text = update.message.text.strip()
+    async for db in get_db():
+        if not await is_operator(user.id, chat_id, db):
+            await update.message.reply_text("❌ 您没有操作权限")
+            return
+        group = (await db.execute(select(Group).where(Group.group_id == chat_id))).scalar_one_or_none()
+        if not group:
+            await update.message.reply_text("❌ 未找到群组配置")
+            return
+        if text == "开启分类":
+            group.category_enabled = True
+            await db.commit()
+            await update.message.reply_text("✅ 已开启账单分类")
+        elif text == "关闭分类":
+            group.category_enabled = False
+            await db.commit()
+            await update.message.reply_text("✅ 已关闭账单分类")
+
+
+async def set_real_time_rate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """设置实时汇率"""
+    if not update.message or not update.effective_chat or not update.effective_user:
+        return
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    async for db in get_db():
+        if not await is_operator(user.id, chat_id, db):
+            await update.message.reply_text("❌ 您没有操作权限")
+            return
+        group = (await db.execute(select(Group).where(Group.group_id == chat_id))).scalar_one_or_none()
+        if not group:
+            await update.message.reply_text("❌ 未找到群组配置")
+            return
+        group.real_time_rate = True
+        await db.commit()
+        await update.message.reply_text("✅ 已开启实时汇率（入账时将使用当前欧易/火币价格）")
+
+
 async def set_day_cut_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """设置日切时间"""
     if not update.message or not update.effective_chat or not update.effective_user:
