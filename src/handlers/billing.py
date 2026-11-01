@@ -89,6 +89,46 @@ async def handle_storage(update, context):
 async def handle_correction(update, context):
     await _record(update, context, 'withdraw' if update.message.text.startswith('下发-') else 'deposit', True)
 
+async def handle_balance(update, context):
+    """处理余额调整：余额+100 / 余额-100"""
+    if not update.message or not update.effective_user:
+        return
+    msg, user, gid = update.message, update.effective_user, update.effective_chat.id
+    try:
+        info = CommandParser.parse_balance(msg.text)
+        if not info:
+            return
+        async for db in get_db():
+            group = (await db.execute(select(Group).where(Group.group_id == gid))).scalar_one_or_none()
+            if not group or not group.is_active:
+                await msg.reply_text('记账尚未开启，请管理员发送「开始」。')
+                return
+            if not await is_operator(user.id, gid, db):
+                await msg.reply_text('❌ 您没有操作权限')
+                return
+            # 余额调整记为特殊的 deposit/或 withdraw，这里用 note 标记
+            kind = 'deposit' if info['amount'] > 0 else 'withdraw'
+            amount = abs(info['amount'])
+            note = info.get('note') or '余额调整'
+            trans = await BillingService.create_transaction(
+                db=db, group_id=gid,
+                user_id=user.id, username=user.username, first_name=user.first_name,
+                operator_id=user.id, operator_username=user.username, operator_first_name=user.first_name,
+                transaction_type=kind, amount=amount, currency=info['currency'],
+                exchange_rate=group.exchange_rate, fee_rate=0, note=note,
+                message_id=msg.message_id,
+                is_correction=False
+            )
+            if trans is None:
+                await msg.reply_text('这条消息已经记账。')
+                return
+            sign = '+' if info['amount'] > 0 else '-'
+            sent = await msg.reply_text(f'✅ 余额{sign}{amount} 已记录 · #{trans.id}\n\n' +
+                Formatter.format_transaction(trans, group.display_mode, group.currency_mode))
+            await BillingService.bind_reply(db, trans, sent.message_id)
+    except ValueError as error:
+        await msg.reply_text(str(error))
+
 async def _show(update, context, history=False, personal=False):
     gid = update.effective_chat.id
     async for db in get_db():
