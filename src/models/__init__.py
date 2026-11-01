@@ -4,6 +4,7 @@
 from .database import Base, engine, AsyncSessionLocal, get_db, init_db, close_db
 from .group import Group, GroupOperator, UserConfig
 from .transaction import Transaction, DailySummary
+from .team import Team, TeamMember
 from .saas import (
     User, Order, BotInstance, PaymentCallback, SystemConfig,
     UserRole, OrderStatus, BotStatus
@@ -21,6 +22,8 @@ __all__ = [
     "UserConfig",
     "Transaction",
     "DailySummary",
+    "Team",
+    "TeamMember",
     "User",
     "Order",
     "BotInstance",
