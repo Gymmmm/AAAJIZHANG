@@ -135,6 +135,51 @@ async def set_display_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ 未找到群组配置")
 
 
+async def set_classic_display_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """设置经典显示模式1/2/3
+    显示模式1：最近3笔（默认）
+    显示模式2：最近1笔
+    显示模式3：仅汇总
+    """
+    if not update.message or not update.effective_chat or not update.effective_user:
+        return
+
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    text = update.message.text.strip()
+
+    async for db in get_db():
+        if not await is_operator(user.id, chat_id, db):
+            await update.message.reply_text("❌ 您没有操作权限")
+            return
+
+        query = select(Group).where(Group.group_id == chat_id)
+        result = await db.execute(query)
+        group = result.scalar_one_or_none()
+
+        if not group:
+            await update.message.reply_text("❌ 未找到群组配置")
+            return
+
+        if text == "显示模式1":
+            group.deposit_display_count = 3
+            group.withdraw_display_count = 3
+            await db.commit()
+            await update.message.reply_text("✅ 已设置显示模式1（最近 3 笔入款/下发）")
+        elif text == "显示模式2":
+            group.deposit_display_count = 1
+            group.withdraw_display_count = 1
+            await db.commit()
+            await update.message.reply_text("✅ 已设置显示模式2（最近 1 笔入款/下发）")
+        elif text == "显示模式3":
+            group.deposit_display_count = 0
+            group.withdraw_display_count = 0
+            await db.commit()
+            await update.message.reply_text("✅ 已设置显示模式3（仅显示汇总）")
+        else:
+            await update.message.reply_text("格式：显示模式1 / 显示模式2 / 显示模式3")
+
+
 async def set_currency_display(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """设置币种显示"""
     if not update.message or not update.effective_chat or not update.effective_user:
@@ -378,7 +423,7 @@ async def show_withdraw_address(update: Update, context: ContextTypes.DEFAULT_TY
         group = result.scalar_one_or_none()
 
         if group and group.withdraw_address:
-            await update.message.reply_text(f"📫 下发地址:\n\n{group.withdraw_address}")
+            await update.message.reply_text(f"📮 下发地址:\n\n{group.withdraw_address}")
         else:
             await update.message.reply_text("❌ 未设置下发地址")
 
