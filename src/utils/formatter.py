@@ -16,7 +16,6 @@ class Formatter:
         type_map = {
             'deposit': '💰入款',
             'withdraw': '💸下发',
-            'storage': '📦寄存'
         }
         type_mark = type_map.get(trans.transaction_type, '📋记录')
 
@@ -71,58 +70,63 @@ class Formatter:
         return "\n".join(lines)
 
     @staticmethod
-    def format_classic_bill(transactions: List, summary: dict, group) -> str:
-        """经典记账机器人账单格式（入款/下发分开列表 + 汇总）"""
+    def format_classic_bill(transactions: List, summary: dict, group, display_limit: int = 0) -> str:
+        """经典记账机器人账单格式（好旺/汇旺风格）
+        display_limit: 0=全部, 1=最近一笔, 3=最近三笔, -1=仅汇总
+        """
         deposits = [t for t in transactions if t.transaction_type == 'deposit' and not t.is_deleted]
         withdraws = [t for t in transactions if t.transaction_type == 'withdraw' and not t.is_deleted]
 
+        # 限制显示条数（好旺显示模式）
+        if display_limit > 0:
+            deposits = deposits[-display_limit:]
+            withdraws = withdraws[-display_limit:]
+
         lines = []
 
-        # 入款列表
-        lines.append(f"入款（{len(deposits)}笔）：")
-        if deposits:
-            for t in deposits:
-                stamp = t.transaction_date
-                if stamp.tzinfo is None:
-                    stamp = pytz.utc.localize(stamp)
-                time_str = stamp.astimezone(pytz.timezone(config.TIMEZONE)).strftime("%H:%M")
-                rate = float(t.exchange_rate or group.exchange_rate or 1)
-                usdt = float(t.cny_amount or 0) / rate if rate else 0
-                if t.currency == 'USDT':
-                    usdt = float(t.amount)
-                    cny = float(t.cny_amount or t.amount * rate)
-                    line = f"{time_str}  {float(t.amount):.2f} U"
-                else:
-                    cny = float(t.amount)
-                    usdt = cny / rate if rate else 0
-                    line = f"{time_str}  {cny:.2f} / {rate} = {usdt:.2f} U"
-                lines.append(line)
-        else:
-            lines.append(" 暂无入款")
-
-        lines.append("")
-
-        # 下发列表
-        lines.append(f"下发（{len(withdraws)}笔）：")
-        if withdraws:
-            for t in withdraws:
-                stamp = t.transaction_date
-                if stamp.tzinfo is None:
-                    stamp = pytz.utc.localize(stamp)
-                time_str = stamp.astimezone(pytz.timezone(config.TIMEZONE)).strftime("%H:%M")
-                if t.currency == 'USDT':
-                    line = f"{time_str}  {float(t.amount):.2f} U"
-                else:
+        if display_limit != -1:
+            # 入款列表
+            lines.append(f"入款（{len(deposits)}笔）：")
+            if deposits:
+                for t in deposits:
+                    stamp = t.transaction_date
+                    if stamp.tzinfo is None:
+                        stamp = pytz.utc.localize(stamp)
+                    time_str = stamp.astimezone(pytz.timezone(config.TIMEZONE)).strftime("%H:%M")
                     rate = float(t.exchange_rate or group.exchange_rate or 1)
-                    usdt = float(t.amount) / rate if rate else 0
-                    line = f"{time_str}  {float(t.amount):.2f} / {rate} = {usdt:.2f} U"
-                lines.append(line)
-        else:
-            lines.append(" 暂无下发")
+                    if t.currency == 'USDT':
+                        line = f"{time_str}  {float(t.amount):.2f} U"
+                    else:
+                        cny = float(t.amount)
+                        usdt = cny / rate if rate else 0
+                        line = f"{time_str}  {cny:.2f} / {rate} = {usdt:.2f} U"
+                    lines.append(line)
+            else:
+                lines.append(" 暂无入款")
 
-        lines.append("")
+            lines.append("")
 
-        # 汇总
+            # 下发列表
+            lines.append(f"下发（{len(withdraws)}笔）：")
+            if withdraws:
+                for t in withdraws:
+                    stamp = t.transaction_date
+                    if stamp.tzinfo is None:
+                        stamp = pytz.utc.localize(stamp)
+                    time_str = stamp.astimezone(pytz.timezone(config.TIMEZONE)).strftime("%H:%M")
+                    if t.currency == 'USDT':
+                        line = f"{time_str}  {float(t.amount):.2f} U"
+                    else:
+                        rate = float(t.exchange_rate or group.exchange_rate or 1)
+                        usdt = float(t.amount) / rate if rate else 0
+                        line = f"{time_str}  {float(t.amount):.2f} / {rate} = {usdt:.2f} U"
+                    lines.append(line)
+            else:
+                lines.append(" 暂无下发")
+
+            lines.append("")
+
+        # 汇总（始终显示）
         total_cny = float(summary.get('deposit_cny', 0))
         total_usdt = float(summary.get('deposit_amount', 0))
         withdraw_usdt = float(summary.get('withdraw_amount', 0))
@@ -172,7 +176,6 @@ class Formatter:
             "—" * 24,
             f"💰 入款 {summary['deposit_count']}笔  {summary['deposit_amount']:.4f}U  ¥{summary['deposit_cny']:.2f}",
             f"💸 下发 {summary['withdraw_count']}笔  {summary['withdraw_amount']:.4f}U  ¥{summary['withdraw_cny']:.2f}",
-            f"📦 寄存 ¥{summary['storage_amount']:.2f}",
             f"💵 手续费 ¥{summary['total_fee']:.2f}",
             "—" * 24,
             f"📈 净额 ¥{summary['net_amount']:.2f}",
