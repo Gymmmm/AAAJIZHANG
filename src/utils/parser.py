@@ -65,6 +65,22 @@ class CommandParser:
         return dict(operation=op, amount=value, note=note or '')
 
     @staticmethod
+    def parse_balance(text):
+        """解析余额调整：余额+100 / 余额-100 / 余额+100u"""
+        from decimal import Decimal
+        match = re.fullmatch(r'余额([+-])(\d+(?:\.\d+)?)([uUrR])?(?:\s+(.*))?', text.strip())
+        if not match:
+            return None
+        op, amount_str, suffix, note = match.groups()
+        amount = Decimal(amount_str)
+        if amount <= 0:
+            raise ValueError('金额必须大于 0。')
+        suffix = (suffix or '').upper()
+        currency = 'USDT' if suffix == 'U' else 'CNY'
+        signed = amount if op == '+' else -amount
+        return dict(amount=signed, currency=currency, note=(note or '').strip(), is_balance=True)
+
+    @staticmethod
     def parse_correction(text):
         withdraw = text.strip().startswith('下发-')
         value = CommandParser._parse_entry(text, withdraw=withdraw, correction=True)
