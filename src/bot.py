@@ -96,6 +96,7 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^下发\\d+'), billing.handle_withdraw))
         application.add_handler(MessageHandler(filters.Regex(r'^.+?下发\\d+'), billing.handle_withdraw))
         application.add_handler(MessageHandler(filters.Regex(r'^P[+-]\\d+'), billing.handle_storage))
+        application.add_handler(MessageHandler(filters.Regex(r'^余额[+-]\\d+'), billing.handle_balance))
 
         # 账单查询
         application.add_handler(MessageHandler(filters.Regex(r'^(显示账单|\+0)$'), billing.show_bills))
