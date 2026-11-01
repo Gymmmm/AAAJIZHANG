@@ -7,6 +7,7 @@ from sqlalchemy import select
 from ..models import Group, UserConfig, get_db, LedgerAudit
 from ..services.billing_service import BillingService
 from ..services.identity import resolve_user
+from ..services.exchange_service import ExchangeService
 from ..utils.parser import CommandParser
 from ..utils.formatter import Formatter
 from ..utils.calculator import Calculator
@@ -52,7 +53,18 @@ async def _record(update, context, kind, correction=False):
             currency = info.get('currency', 'CNY')
             if kind == 'storage':
                 amount *= 1 if info['operation'] == '+' else -1
-            rate = effective('exchange_rate')
+
+            # 汇率：优先使用指定汇率 > 个人汇率 > 群默认；若开启实时汇率且未指定，则取当前欧易价
+            rate = info.get('exchange_rate')
+            if rate is None and personal and personal.exchange_rate is not None:
+                rate = personal.exchange_rate
+            if rate is None:
+                if group.real_time_rate:
+                    live = await ExchangeService.get_okex_usdt_price()
+                    rate = Decimal(str(live)) if live else group.exchange_rate
+                else:
+                    rate = group.exchange_rate
+
             fee = effective('fee_rate') if kind != 'storage' else Decimal(0)
             trans = await BillingService.create_transaction(db=db, group_id=gid,
                 user_id=target.id, username=target.username, first_name=target.first_name,
