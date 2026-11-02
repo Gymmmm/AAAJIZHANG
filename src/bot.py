@@ -78,6 +78,9 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^上课$'), basic.unmute_group))
         application.add_handler(MessageHandler(filters.Regex(r'^下课$'), basic.mute_group))
 
+        # 管理员权限控制
+        application.add_handler(MessageHandler(filters.Regex(r'^(开通群组|白名单|取消白名单)'), basic.set_group_access))
+
         # 操作人管理
         application.add_handler(MessageHandler(filters.Regex(r'^添加操作[人员]'), operator.add_operator))
         application.add_handler(MessageHandler(filters.Regex(r'^删除操作[人员]'), operator.remove_operator))
