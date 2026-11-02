@@ -3,7 +3,7 @@
 """
 from datetime import datetime, time
 from typing import Optional
-from sqlalchemy import String, BigInteger, Boolean, Float, Integer, Time, JSON
+from sqlalchemy import String, BigInteger, Boolean, Float, Integer, Time, JSON, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -49,6 +49,11 @@ class Group(Base):
 
     # 广告配置
     top_ad: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, comment="顶部广告")
+
+    # 试用与权限控制
+    trial_expires: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="免费试用到期时间")
+    access_expires: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="付费权限到期时间")
+    is_whitelisted: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否白名单（永久可用）")
 
 
 class GroupOperator(Base):
