@@ -1,6 +1,7 @@
 """
 基础功能处理器
 """
+from datetime import datetime, timedelta
 from telegram import Update, ChatMember
 from telegram.ext import ContextTypes
 from sqlalchemy import select
@@ -27,23 +28,27 @@ async def start_billing(update: Update, context: ContextTypes.DEFAULT_TYPE):
         group = result.scalar_one_or_none()
 
         if not group:
-            # 创建新群组
+            # 创建新群组，自动给 1 天免费试用
+            now = datetime.utcnow()
             group = Group(
                 group_id=chat_id,
                 group_name=chat_title,
                 group_type=update.effective_chat.type,
-                is_active=True
+                is_active=True,
+                trial_expires=now + timedelta(days=1)
             )
             from config import config
             group.exchange_rate = config.DEFAULT_EXCHANGE_RATE
             group.fee_rate = config.DEFAULT_FEE_RATE
             db.add(group)
+            trial_msg = f"\n🎉 免费试用 1 天，到期时间：{(now + timedelta(days=1)).strftime('%m-%d %H:%M')} UTC"
         else:
             group.is_active = True
+            trial_msg = ""
 
         await db.commit()
 
-        await update.message.reply_text("✅ 记账功能已开启")
+        await update.message.reply_text(f"✅ 记账功能已开启{trial_msg}")
 
 
 async def stop_billing(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -143,6 +148,52 @@ async def unmute_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ 操作失败: {str(e)}")
+
+
+async def set_group_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """管理员设置群组使用权限（白名单 / 延长）"""
+    if not update.message or not update.effective_user:
+        return
+    # 仅机器人所有者可操作（通过环境变量或简单判断）
+    from config import config
+    if update.effective_user.id not in getattr(config, 'ADMIN_IDS', []):
+        await update.message.reply_text("❌ 仅机器人所有者可操作")
+        return
+
+    text = update.message.text.strip()
+    parts = text.split()
+    if len(parts) < 2:
+        await update.message.reply_text("格式：\n开通群组 群ID\n白名单 群ID\n取消白名单 群ID")
+        return
+
+    action = parts[0]
+    try:
+        target_gid = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("❌ 群ID 必须为数字")
+        return
+
+    async for db in get_db():
+        group = (await db.execute(select(Group).where(Group.group_id == target_gid))).scalar_one_or_none()
+        if not group:
+            await update.message.reply_text("❌ 未找到该群组，请先在群内发送「开始」")
+            return
+
+        if action == "开通群组":
+            days = int(parts[2]) if len(parts) > 2 else 30
+            group.access_expires = datetime.utcnow() + timedelta(days=days)
+            await db.commit()
+            await update.message.reply_text(f"✅ 已开通群组 {target_gid} ，有效期 {days} 天")
+        elif action == "白名单":
+            group.is_whitelisted = True
+            await db.commit()
+            await update.message.reply_text(f"✅ 已将群组 {target_gid} 加入白名单（永久可用）")
+        elif action == "取消白名单":
+            group.is_whitelisted = False
+            await db.commit()
+            await update.message.reply_text(f"✅ 已取消群组 {target_gid} 白名单")
+        else:
+            await update.message.reply_text("❌ 未知操作")
 
 
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
