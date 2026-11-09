@@ -202,10 +202,37 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     help_text = """📚 记账助手操作说明,支持功能定制
-<>️ 基本操作 (点击可复制)
+📄 操作人权限说明
+
+上课下课 ▫️ 上课 / 下课（管理员操作，机器人需有禁言权限）
+
+增加记员 ▫️ 添加操作人 @aaa @bbb
+删除记员 ▫️ 删除操作人 @aaa @bbb
+
+增加记员 ▫️ 回复指定人消息：添加操作人
+删除记员 ▫️ 回复指定人消息：删除操作人
+
+查看记员 ▫️ 显示操作人
+
+全员记账 ▫️ 设置全员
+取消全员 ▫️ 取消全员
+
+全局记员 ▫️ 添加全局操作人 @aaa
+删除全局 ▫️ 删除全局操作人 @aaa
+查看全局 ▫️ 显示全局操作人
+
+权限范围：
+• 群管理员：管理本群操作人、全员模式及上课下课。
+• 本群操作人：可在本群记账及调整账单参数。
+• 全局操作人：可跨群记账，不因此获得群管理员权限。
+• 机器人所有者：可添加、删除全局操作人。
+• @成员前，该成员需在本群发过言；也可直接回复其消息操作。
+
+1️⃣ 基本操作（点击指令可复制）
 配置费率▫️设置费率10   (支持负数%)
 配置汇率▫️设置汇率8
 设置实时汇率▫️设置实时汇率
+关闭实时汇率▫️关闭实时汇率
 添加操作员▫️ 添加操作人@xxxx
 删除操作员▫️ 删除操作人@xxxx
 查看操作人▫️显示操作人
@@ -224,7 +251,7 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 开始▫️开始
 停止▫️停止
 
-<>️ 附加操作
+2️⃣ 附加操作
 记账备注▫️+1000 空格备注
 快捷记账▫️+1000*0.1
 快捷记账▫️+1000 张三*0.1
@@ -255,7 +282,7 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 记账置顶▫️记账置顶
 置顶关闭▫️置顶关闭
 
-<>️ 团队与导出
+3️⃣ 团队与导出
 创建团队▫️创建团队xx
 团队列表▫️团队列表
 归档团队▫️归档团队xx
@@ -267,7 +294,17 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 设置代付▫️设置代付
 拉停▫️拉停
 
-❖ 以上为本机器人所有功能配置及指令示例
+❖ 操作人管理由群管理员执行；全局操作人由机器人所有者管理。
 ❖ 点击▫️后的文字，可快速复制指令"""
 
-    await update.message.reply_text(help_text)
+    from html import escape
+
+    # Inline code makes command examples selectable/copyable in Telegram.
+    lines = []
+    for line in help_text.splitlines():
+        if "▫️" in line:
+            label, command = line.split("▫️", 1)
+            lines.append(f"{escape(label.rstrip())} ▫️ <code>{escape(command.strip())}</code>")
+        else:
+            lines.append(escape(line))
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
