@@ -356,9 +356,12 @@ async def set_real_time_rate(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if not group:
             await update.message.reply_text("❌ 未找到群组配置")
             return
-        group.real_time_rate = True
+        group.real_time_rate = update.message.text.strip() != '关闭实时汇率'
         await db.commit()
-        await update.message.reply_text("✅ 已开启实时汇率（入账时将使用当前欧易/火币价格）")
+        if group.real_time_rate:
+            await update.message.reply_text("✅ 已开启实时汇率（入账时将使用当前欧易/火币价格）")
+        else:
+            await update.message.reply_text("✅ 已关闭实时汇率，后续入账使用个人或群组固定汇率。")
 
 
 async def set_day_cut_time(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -63,7 +63,7 @@ class AccountingBot:
 
         application.add_handler(MessageHandler(filters.ALL, remember_update), group=-1)
         application.add_handler(MessageHandler(filters.Regex(r'^(撤销|撤销恢复|恢复)$'), billing.revoke_record))
-        application.add_handler(MessageHandler(filters.Regex(r'^(-\\d|下发-\\d)'), billing.handle_correction))
+        application.add_handler(MessageHandler(filters.Regex(r'^(-\d|下发-\d)'), billing.handle_correction))
         application.add_handler(MessageHandler(filters.Regex(r'^(导出账单|导出Excel)$'), reports.export_bills))
         application.add_handler(MessageHandler(filters.Regex(r'^网页账单$'), reports.web_bills))
         application.add_handler(MessageHandler(filters.Regex(r'^删除全局操作人'), operator.remove_global_operator))
@@ -73,6 +73,7 @@ class AccountingBot:
         # 基础命令
         application.add_handler(CommandHandler("start", basic.start_billing))
         application.add_handler(CommandHandler("help", basic.show_help))
+        application.add_handler(MessageHandler(filters.Regex(r'^帮助$'), basic.show_help))
         application.add_handler(MessageHandler(filters.Regex(r'^开始$'), basic.start_billing))
         application.add_handler(MessageHandler(filters.Regex(r'^停止$'), basic.stop_billing))
         application.add_handler(MessageHandler(filters.Regex(r'^上课$'), basic.unmute_group))
@@ -94,12 +95,12 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r"^/我(?:@\w+)?$"), billing.show_my_bills))
 
         # 账单操作
-        application.add_handler(MessageHandler(filters.Regex(r'^\+\\d+'), billing.handle_deposit))
-        application.add_handler(MessageHandler(filters.Regex(r'^.+?\+\\d+'), billing.handle_deposit))
-        application.add_handler(MessageHandler(filters.Regex(r'^下发\\d+'), billing.handle_withdraw))
-        application.add_handler(MessageHandler(filters.Regex(r'^.+?下发\\d+'), billing.handle_withdraw))
-        application.add_handler(MessageHandler(filters.Regex(r'^P[+-]\\d+'), billing.handle_storage))
-        application.add_handler(MessageHandler(filters.Regex(r'^余额[+-]\\d+'), billing.handle_balance))
+        application.add_handler(MessageHandler(filters.Regex(r'^\+\d+'), billing.handle_deposit))
+        application.add_handler(MessageHandler(filters.Regex(r'^.+?\+\d+'), billing.handle_deposit))
+        application.add_handler(MessageHandler(filters.Regex(r'^下发\d+'), billing.handle_withdraw))
+        application.add_handler(MessageHandler(filters.Regex(r'^.+?下发\d+'), billing.handle_withdraw))
+        application.add_handler(MessageHandler(filters.Regex(r'^P[+-]\d+'), billing.handle_storage))
+        application.add_handler(MessageHandler(filters.Regex(r'^余额[+-]\d+'), billing.handle_balance))
 
         # 账单查询
         application.add_handler(MessageHandler(filters.Regex(r'^(显示账单|\+0)$'), billing.show_bills))
@@ -115,15 +116,15 @@ class AccountingBot:
 
         # 参数设置
         application.add_handler(MessageHandler(filters.Regex(r'^设置汇率'), settings.set_exchange_rate))
-        application.add_handler(MessageHandler(filters.Regex(r'^设置.+?汇率\\d+'), settings.set_exchange_rate))
+        application.add_handler(MessageHandler(filters.Regex(r'^设置.+?汇率\d+'), settings.set_exchange_rate))
         application.add_handler(MessageHandler(filters.Regex(r'^设置费率'), settings.set_fee_rate))
-        application.add_handler(MessageHandler(filters.Regex(r'^设置.+?费率\\d+'), settings.set_fee_rate))
+        application.add_handler(MessageHandler(filters.Regex(r'^设置.+?费率\d+'), settings.set_fee_rate))
         application.add_handler(MessageHandler(filters.Regex(r'^(查看费汇配置|费汇配置)$'), settings.show_user_configs))
-        application.add_handler(MessageHandler(filters.Regex(r'^删除.*? 配置$'), settings.delete_user_config))
-        application.add_handler(MessageHandler(filters.Regex(r'^设置实时汇率$'), settings.set_real_time_rate))
+        application.add_handler(MessageHandler(filters.Regex(r'^删除.*?配置$'), settings.delete_user_config))
+        application.add_handler(MessageHandler(filters.Regex(r'^(设置实时汇率|开启实时汇率|关闭实时汇率)$'), settings.set_real_time_rate))
 
         # 显示设置
-        application.add_handler(MessageHandler(filters.Regex(r'^设置(入款|下发)条数\\d+$'), settings.set_display_count))
+        application.add_handler(MessageHandler(filters.Regex(r'^设置(入款|下发)条数\d+$'), settings.set_display_count))
         application.add_handler(MessageHandler(filters.Regex(r'^(显示模式1|显示模式2|显示模式3)$'), settings.set_classic_display_mode))
         application.add_handler(MessageHandler(filters.Regex(r'^设置币种[A-Z]+$'), settings.set_currency_display))
         application.add_handler(MessageHandler(filters.Regex(r'^(记账置顶|置顶关闭|开启置顶|关闭置顶)$'), settings.toggle_pin))
