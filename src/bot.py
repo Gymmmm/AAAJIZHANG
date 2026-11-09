@@ -6,6 +6,7 @@ from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
+    CallbackQueryHandler,
     MessageHandler,
     filters,
     ContextTypes
@@ -14,7 +15,7 @@ from telegram.ext import (
 from config import config
 from .models import init_db, close_db
 from .services.schedule_service import ScheduleService
-from .handlers import basic, operator, billing, settings, query, reports, team
+from .handlers import basic, operator, billing, settings, query, reports, team, deposit_style
 from .services.identity import remember_update
 
 # 配置日志
@@ -70,6 +71,9 @@ class AccountingBot:
         application.add_handler(MessageHandler(filters.Regex(r'^(查账单.+|账单)$'), billing.show_my_bills))
         application.add_handler(MessageHandler(filters.Regex(r'^(删除全部账单|清除全部账单|清除今日账单)$'), billing.delete_bills))
         application.add_handler(MessageHandler(filters.Regex(r'^关闭日切$'), settings.set_day_cut_time))
+        application.add_handler(MessageHandler(filters.TEXT & filters.REPLY, deposit_style.receive_template), group=-2)
+        application.add_handler(CallbackQueryHandler(deposit_style.choose_style, pattern=r'^depstyle:'))
+        application.add_handler(MessageHandler(filters.Regex(r'^(入款样式|入款账单样式|入款账单样式配置)$'), deposit_style.show_style))
         # 基础命令
         application.add_handler(CommandHandler("start", basic.start_billing))
         application.add_handler(CommandHandler("help", basic.show_help))
@@ -209,3 +213,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

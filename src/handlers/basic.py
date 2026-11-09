@@ -282,6 +282,8 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 记账置顶▫️记账置顶
 置顶关闭▫️置顶关闭
 
+入款样式 ▫️ 入款样式
+
 3️⃣ 团队与导出
 创建团队▫️创建团队xx
 团队列表▫️团队列表
@@ -308,3 +310,4 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             lines.append(escape(line))
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+

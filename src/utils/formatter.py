@@ -5,14 +5,17 @@ from datetime import datetime
 from typing import List, Optional
 import pytz
 from config import config
+from .deposit_style import render_deposit, deposit_usdt
 
 
 class Formatter:
     """消息格式化器"""
 
     @staticmethod
-    def format_transaction(trans, display_mode: str = "pure", currency_mode: str = "single") -> str:
+    def format_transaction(trans, display_mode: str = "pure", currency_mode: str = "single", deposit_style=None) -> str:
         """格式化单条交易记录（优化版）"""
+        if deposit_style and trans.transaction_type == 'deposit':
+            return render_deposit(trans, deposit_style)
         type_map = {
             'deposit': '💰入款',
             'withdraw': '💸下发',
@@ -96,6 +99,8 @@ class Formatter:
         lines = []
 
         def fmt_line(t, is_deposit=True):
+            if is_deposit and getattr(group, 'deposit_style', None):
+                return render_deposit(t, group.deposit_style)
             stamp = t.transaction_date
             if stamp.tzinfo is None:
                 stamp = pytz.utc.localize(stamp)
@@ -107,49 +112,54 @@ class Formatter:
             else:
                 cny = float(t.amount)
                 usdt = cny / rate if rate else 0
-                return f"{time_str}  {cny:.0f}/{rate}={usdt:.2f}U"
+                if is_deposit:
+                    usdt = float(deposit_usdt(t))
+                amount = format(cny, '.2f').rstrip('0').rstrip('.')
+                fee_part = f" × {1 - float(t.fee_rate or 0) / 100:g}" if is_deposit and t.fee_rate else ''
+                return f"{time_str}  {amount} / {rate:g}{fee_part} = {usdt:.2f}"
 
         if display_limit != -1:
             # 入款列表
-            lines.append(f"入款 ({len(deposits)}笔):")
+            lines.append(f"入款：（{len([t for t in transactions if t.transaction_type == 'deposit' and not t.is_deleted])}笔）")
             if deposits:
                 for t in deposits:
                     lines.append(fmt_line(t, True))
             else:
-                lines.append("  暂无")
+                lines.append(" 暂无入款")
 
             lines.append("")
 
             # 下发列表
-            lines.append(f"下发 ({len(withdraws)}笔):")
+            lines.append(f"下发：（{len([t for t in transactions if t.transaction_type == 'withdraw' and not t.is_deleted])}笔）")
             if withdraws:
                 for t in withdraws:
                     lines.append(fmt_line(t, False))
             else:
-                lines.append("  暂无")
+                lines.append(" 暂无下发")
 
             lines.append("")
 
         # 汇总
         total_cny = float(summary.get('deposit_cny', 0))
-        total_usdt = float(summary.get('deposit_amount', 0))
-        withdraw_cny = float(summary.get('withdraw_cny', 0))
         withdraw_usdt = float(summary.get('withdraw_amount', 0))
         rate = float(group.exchange_rate or 0)
         fee = float(group.fee_rate or 0)
 
-        # 应下发按总入款 USDT 计算（已扣费率后的 final 逻辑在 summary 中已处理，这里用 total_usdt）
-        should_pay_usdt = total_usdt
-        should_pay_cny = total_cny * (1 - fee / 100) if fee else total_cny
+        # 按每笔保存的净额及原始汇率汇总，避免群参数变更后重算历史费用。
+        should_pay_usdt = float(sum(deposit_usdt(t) for t in transactions
+            if t.transaction_type == 'deposit' and not t.is_deleted))
 
-        lines.append(f"总入款: {total_cny:.0f}")
-        lines.append(f"费率: {fee}%")
-        lines.append(f"汇率: {rate}")
-        lines.append(f"应下发: {should_pay_cny:.0f} | {should_pay_usdt:.2f}U")
-        lines.append(f"已下发: {withdraw_cny:.0f} | {withdraw_usdt:.2f}U")
-        unpaid_cny = should_pay_cny - withdraw_cny
+        def total(value):
+            return f"{value:.2f}".rstrip('0').rstrip('.') if value else '0'
+
+        lines.append(f"总入款：{total(total_cny)}")
+        lines.append(f"当前费率：{fee:g}%")
+        lines.append(f"固定汇率：{rate:g}")
+        lines.append("")
+        lines.append(f"应下发：{total(should_pay_usdt)} USDT")
+        lines.append(f"已下发：{total(withdraw_usdt)} USDT")
         unpaid_usdt = should_pay_usdt - withdraw_usdt
-        lines.append(f"未下发: {unpaid_cny:.0f} | {unpaid_usdt:.2f}U")
+        lines.append(f"未下发：{total(unpaid_usdt)} USDT")
 
         return "\n".join(lines)
 
@@ -159,7 +169,8 @@ class Formatter:
         title: str = "明细",
         display_mode: str = "pure",
         currency_mode: str = "single",
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        deposit_style=None
     ) -> str:
         """格式化交易列表（更紧凑，不显示序号）"""
         if not transactions:
@@ -170,7 +181,7 @@ class Formatter:
         display_transactions = transactions[:limit] if limit else transactions
 
         for trans in display_transactions:
-            lines.append(Formatter.format_transaction(trans, display_mode, currency_mode))
+            lines.append(Formatter.format_transaction(trans, display_mode, currency_mode, deposit_style))
             lines.append("")  # 空行分隔
 
         if limit and len(transactions) > limit:
@@ -268,3 +279,4 @@ class Formatter:
         for char in special_chars:
             text = text.replace(char, f'\\{char}')
         return text
+

@@ -12,6 +12,7 @@ from ..utils.parser import CommandParser
 from ..utils.formatter import Formatter
 from ..utils.calculator import Calculator
 from .operator import is_operator
+from .deposit_style import load_style
 
 async def target_user(update, db, name=None):
     if name:
@@ -78,7 +79,8 @@ async def _record(update, context, kind, correction=False):
                 return
             label = {'deposit':'入款','withdraw':'下发','storage':'寄存'}[kind]
             sent = await msg.reply_text(f'✅ {label}{"修正" if correction else "成功"} · #{trans.id}\n\n' +
-                Formatter.format_transaction(trans, group.display_mode, group.currency_mode) +
+                Formatter.format_transaction(trans, group.display_mode, group.currency_mode,
+                    await load_style(db, context.bot.id, gid)) +
                 '\n\n回复本条或原消息发送「撤销」；恢复请发送「撤销恢复」。')
             await BillingService.bind_reply(db, trans, sent.message_id)
             if group.pin_enabled:
@@ -136,7 +138,8 @@ async def handle_balance(update, context):
                 return
             sign = '+' if info['amount'] > 0 else '-'
             sent = await msg.reply_text(f'✅ 余额{sign}{amount} 已记录 · #{trans.id}\n\n' +
-                Formatter.format_transaction(trans, group.display_mode, group.currency_mode))
+                Formatter.format_transaction(trans, group.display_mode, group.currency_mode,
+                    await load_style(db, context.bot.id, gid)))
             await BillingService.bind_reply(db, trans, sent.message_id)
     except ValueError as error:
         await msg.reply_text(str(error))
@@ -155,6 +158,8 @@ async def _show(update, context, history=False, personal=False):
             return
         rows = await BillingService.get_transactions(db, gid, user_id=target.id if target else None,
                                                      current_period=not history)
+
+        group.deposit_style = await load_style(db, context.bot.id, gid)
 
         # 主要账单显示使用经典格式（好旺/汇旺风格）
         if not personal and not history:
@@ -180,7 +185,8 @@ async def _show(update, context, history=False, personal=False):
             body = summary + '\n\n' + Formatter.format_transaction_list(
                 shown, '明细',
                 display_mode=group.display_mode,
-                currency_mode=group.currency_mode
+                currency_mode=group.currency_mode,
+                deposit_style=group.deposit_style
             )
             if len(shown) < len(rows):
                 body += '\n\n更多明细请发送「导出账单」或「网页账单」。'
@@ -267,3 +273,4 @@ async def save_bills(update, context):
         summary = {k:Decimal(v) if k.endswith(('amount','cny','fee')) else v for k,v in json.loads(period.summary).items()}
         await update.message.reply_text(Formatter.format_summary(summary, f'账期 #{period.id} 已保存') +
                                        '\n\n本期重新计账；历史记录可查，可导出。')
+
